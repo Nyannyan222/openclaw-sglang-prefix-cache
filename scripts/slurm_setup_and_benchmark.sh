@@ -64,6 +64,55 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   try_module_load nodejs node node/20 nodejs/20 node/22 nodejs/22 npm || true
 fi
 
+python_version_ok() {
+  "$1" - <<'PY' >/dev/null 2>&1
+import sys
+sys.exit(0 if sys.version_info >= (3, 9) else 1)
+PY
+}
+
+select_python_bin() {
+  if [ -n "${PYTHON_MODULE:-}" ]; then
+    try_module_load "$PYTHON_MODULE" || {
+      echo "ERROR: requested PYTHON_MODULE=$PYTHON_MODULE could not be loaded."
+      exit 1
+    }
+  fi
+
+  local candidate
+  for candidate in "$PYTHON_BIN" python3.12 python3.11 python3.10 python3.9 python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && python_version_ok "$candidate"; then
+      PYTHON_BIN="$(command -v "$candidate")"
+      export PYTHON_BIN
+      echo "Selected Python: $PYTHON_BIN"
+      return 0
+    fi
+  done
+
+  try_module_load \
+    python/3.12 python/3.11 python/3.10 python/3.9 \
+    python3/3.12 python3/3.11 python3/3.10 python3/3.9 \
+    python312 python311 python310 python39 python || true
+
+  for candidate in "$PYTHON_BIN" python3.12 python3.11 python3.10 python3.9 python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && python_version_ok "$candidate"; then
+      PYTHON_BIN="$(command -v "$candidate")"
+      export PYTHON_BIN
+      echo "Selected Python: $PYTHON_BIN"
+      return 0
+    fi
+  done
+
+  echo "ERROR: Python 3.9+ is required, but no suitable Python was found."
+  echo "Try checking available modules on the login node with:"
+  echo "  module avail python"
+  echo "Then submit with, for example:"
+  echo "  sbatch --export=ALL,PYTHON_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh"
+  exit 1
+}
+
+select_python_bin
+
 install_local_node() {
   if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
     return 0

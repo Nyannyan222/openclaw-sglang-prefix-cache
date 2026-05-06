@@ -112,6 +112,19 @@ Then submit with the matching module name:
 sbatch --account=MST114180 --time=00:30:00 --export=ALL,NODE_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
 ```
 
+If the job sees an old compute-node Python such as Python 3.6, check Python
+modules on the login node:
+
+```bash
+module avail python
+```
+
+Then submit with the matching module name:
+
+```bash
+sbatch --account=MST114180 --time=00:30:00 --export=ALL,PYTHON_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
+```
+
 ## 4. Manual Setup: Install Basic Tools
 
 Check Python and Node:
