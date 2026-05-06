@@ -24,6 +24,8 @@ LOG_DIR="$WORK_ROOT/logs"
 HF_HOME_DIR="$WORK_ROOT/huggingface"
 NPM_PREFIX="$WORK_ROOT/npm"
 NODE_INSTALL_DIR="$WORK_ROOT/node"
+UV_BIN_DIR="$WORK_ROOT/uv/bin"
+UV_CACHE_DIR="$WORK_ROOT/uv-cache"
 SGLANG_LOG="$LOG_DIR/sglang_openclaw_${SLURM_JOB_ID:-manual}.log"
 RESULT_DIR="$PROJECT_ROOT/benchmark_results/neno5_${SLURM_JOB_ID:-manual}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}"
@@ -31,11 +33,12 @@ SGLANG_PORT="${SGLANG_PORT:-30000}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 NODE_VERSION="${NODE_VERSION:-v20.19.0}"
 
-mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$RESULT_DIR"
+mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$UV_BIN_DIR" "$UV_CACHE_DIR" "$RESULT_DIR"
 
-export PATH="$NODE_INSTALL_DIR/bin:$NPM_PREFIX/bin:$HOME/.local/bin:$PATH"
+export PATH="$UV_BIN_DIR:$NODE_INSTALL_DIR/bin:$NPM_PREFIX/bin:$HOME/.local/bin:$PATH"
 export HF_HOME="$HF_HOME_DIR"
 export HF_HUB_ENABLE_HF_TRANSFER=1
+export UV_CACHE_DIR
 
 if [ -f /etc/profile.d/modules.sh ]; then
   # Many HPC systems expose Node/Python/CUDA through environment modules.
@@ -158,6 +161,31 @@ install_local_node() {
 
 install_local_node
 
+install_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+    "$PYTHON_BIN" -m pip install --user uv
+  elif "$PYTHON_BIN" -m ensurepip --user >/dev/null 2>&1; then
+    "$PYTHON_BIN" -m pip install --user uv
+  else
+    echo "pip is not available; installing uv with the standalone installer into $UV_BIN_DIR"
+    if command -v curl >/dev/null 2>&1; then
+      curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$UV_BIN_DIR" sh
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$UV_BIN_DIR" sh
+    else
+      echo "ERROR: neither curl nor wget is available to install uv."
+      return 1
+    fi
+  fi
+
+  export PATH="$UV_BIN_DIR:$HOME/.local/bin:$PATH"
+  command -v uv >/dev/null 2>&1
+}
+
 echo "== Job context =="
 date
 hostname
@@ -188,9 +216,7 @@ npm --version
 echo
 
 echo "== Install uv if needed =="
-if ! command -v uv >/dev/null 2>&1; then
-  "$PYTHON_BIN" -m pip install --user uv
-fi
+install_uv
 uv --version
 echo
 

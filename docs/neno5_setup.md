@@ -75,6 +75,8 @@ The job will:
 
 - install a local Node.js runtime under `/work/$USER/openclaw-sglang/node` if
   no cluster Node module is available
+- install `uv` under `/work/$USER/openclaw-sglang/uv/bin` if Python does not
+  provide `pip`
 - install OpenClaw under `/work/$USER/openclaw-sglang/npm`
 - install SGLang under `/work/$USER/openclaw-sglang/runtime/.venv`
 - start SGLang on `127.0.0.1:30000`
