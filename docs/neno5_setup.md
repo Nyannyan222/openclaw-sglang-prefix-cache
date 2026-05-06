@@ -103,6 +103,8 @@ The benchmark job will:
 - quarantine unmanaged `site-packages/deep_gemm` files if package metadata is
   missing and `uv pip uninstall` cannot remove them
 - configure OpenClaw to use local SGLang
+- skip the optional OpenClaw smoke generation by default, because the
+  prefix-cache benchmark talks to SGLang directly
 - run the R1/R2/R3 benchmark
 - write results under `benchmark_results/neno5_<jobid>/`
 

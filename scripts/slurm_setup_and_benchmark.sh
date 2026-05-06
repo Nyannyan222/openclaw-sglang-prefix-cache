@@ -38,6 +38,8 @@ SGLANG_PACKAGE="${SGLANG_PACKAGE:-sglang==0.5.9}"
 RESET_VENV="${RESET_VENV:-0}"
 MODE="${MODE:-all}"
 MANAGED_PYTHON_VERSION="${MANAGED_PYTHON_VERSION:-3.11}"
+RUN_OPENCLAW_SMOKE="${RUN_OPENCLAW_SMOKE:-0}"
+SGLANG_MEM_FRACTION_STATIC="${SGLANG_MEM_FRACTION_STATIC:-0.45}"
 
 case "$MODE" in
   all|setup|run) ;;
@@ -381,6 +383,21 @@ reset_sglang_venv() {
   esac
 }
 
+assert_sglang_alive() {
+  if ! kill -0 "$SGLANG_PID" >/dev/null 2>&1; then
+    echo "ERROR: SGLang process is not running before: $1"
+    echo "Last SGLang log lines:"
+    tail -n 180 "$SGLANG_LOG" || true
+    exit 1
+  fi
+  if ! curl -fsS "http://127.0.0.1:${SGLANG_PORT}/v1/models" >/dev/null 2>&1; then
+    echo "ERROR: SGLang HTTP endpoint is not healthy before: $1"
+    echo "Last SGLang log lines:"
+    tail -n 180 "$SGLANG_LOG" || true
+    exit 1
+  fi
+}
+
 echo "== Job context =="
 date
 hostname
@@ -393,6 +410,8 @@ echo "OPENCLAW_PACKAGE=$OPENCLAW_PACKAGE"
 echo "SGLANG_PACKAGE=$SGLANG_PACKAGE"
 echo "MODE=$MODE"
 echo "MANAGED_PYTHON_VERSION=$MANAGED_PYTHON_VERSION"
+echo "RUN_OPENCLAW_SMOKE=$RUN_OPENCLAW_SMOKE"
+echo "SGLANG_MEM_FRACTION_STATIC=$SGLANG_MEM_FRACTION_STATIC"
 echo
 
 echo "== GPU =="
@@ -542,7 +561,7 @@ python -m sglang.launch_server \
   --log-requests-level 1 \
   --log-requests-format json \
   --radix-eviction-policy lru \
-  --mem-fraction-static 0.65 \
+  --mem-fraction-static "$SGLANG_MEM_FRACTION_STATIC" \
   --attention-backend triton \
   --sampling-backend pytorch \
   --disable-cuda-graph \
@@ -599,14 +618,22 @@ openclaw onboard \
 openclaw models list --provider sglang || true
 openclaw models status || true
 echo
+assert_sglang_alive "benchmark"
 
-echo "== OpenClaw smoke test =="
-openclaw infer model run \
-  --local \
-  --model "sglang/${MODEL_ID}" \
-  --prompt "Reply with exactly: openclaw-sglang-ok" \
-  --json
-echo
+if [ "$RUN_OPENCLAW_SMOKE" = "1" ]; then
+  echo "== OpenClaw smoke test =="
+  openclaw infer model run \
+    --local \
+    --model "sglang/${MODEL_ID}" \
+    --prompt "Reply with exactly: openclaw-sglang-ok" \
+    --json
+  echo
+  assert_sglang_alive "benchmark after OpenClaw smoke test"
+else
+  echo "== OpenClaw smoke test skipped =="
+  echo "Set RUN_OPENCLAW_SMOKE=1 to run it. The prefix-cache benchmark talks to SGLang directly."
+  echo
+fi
 
 echo "== Run prefix-cache benchmark =="
 cd "$PROJECT_ROOT"
