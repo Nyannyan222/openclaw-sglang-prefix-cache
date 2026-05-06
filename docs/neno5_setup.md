@@ -117,6 +117,8 @@ The setup job will:
 - install pinned SGLang under `/work/$USER/openclaw-sglang/runtime/.venv`
   and rebuild the venv if a different SGLang version is already present
 - verify PyTorch can see CUDA from the SGLang virtual environment
+- load or detect a CUDA toolkit and set `CUDA_HOME`, because SGLang/Triton JIT
+  kernels require `nvcc` at request time
 
 The benchmark job will:
 
@@ -183,6 +185,19 @@ Then submit with the matching module name:
 
 ```bash
 sbatch --account=MST114180 --export=ALL,PYTHON_MODULE=<module-name> scripts/slurm_setup_env.sh
+```
+
+If the job reports that CUDA toolkit or `CUDA_HOME` is missing, check CUDA
+modules:
+
+```bash
+module avail cuda
+```
+
+Then submit benchmark jobs with the matching module name:
+
+```bash
+sbatch --account=MST114180 --export=ALL,CUDA_MODULE=<module-name> scripts/slurm_run_benchmark.sh
 ```
 
 ## 4. Manual Setup: Install Basic Tools

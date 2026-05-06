@@ -83,6 +83,13 @@ if [ -n "${NODE_MODULE:-}" ]; then
   }
 fi
 
+if [ -n "${CUDA_MODULE:-}" ]; then
+  try_module_load "$CUDA_MODULE" || {
+    echo "ERROR: requested CUDA_MODULE=$CUDA_MODULE could not be loaded."
+    exit 1
+  }
+fi
+
 node_version_ok() {
   command -v node >/dev/null 2>&1 &&
     command -v npm >/dev/null 2>&1 &&
@@ -237,6 +244,63 @@ import sysconfig
 include = sysconfig.get_config_var("INCLUDEPY")
 raise SystemExit(0 if include and (Path(include) / "Python.h").exists() else 1)
 PY
+}
+
+cuda_home_ok() {
+  [ -n "${CUDA_HOME:-}" ] &&
+    [ -d "$CUDA_HOME" ] &&
+    [ -d "$CUDA_HOME/lib64" ] &&
+    { [ -x "$CUDA_HOME/bin/nvcc" ] || command -v nvcc >/dev/null 2>&1; }
+}
+
+set_cuda_home_from_nvcc() {
+  if command -v nvcc >/dev/null 2>&1; then
+    CUDA_HOME="$(cd "$(dirname "$(command -v nvcc)")/.." && pwd)"
+    export CUDA_HOME
+  fi
+}
+
+set_cuda_home_from_candidates() {
+  local candidate
+  for candidate in \
+    /usr/local/cuda \
+    /usr/local/cuda-12.8 \
+    /usr/local/cuda-12.4 \
+    /usr/local/cuda-12 \
+    /opt/cuda \
+    /opt/cuda-12.8 \
+    /opt/cuda-12.4; do
+    if [ -d "$candidate" ]; then
+      CUDA_HOME="$candidate"
+      export CUDA_HOME
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_cuda_home() {
+  if cuda_home_ok; then
+    return 0
+  fi
+
+  try_module_load cuda/12.8 cuda/12.4 cuda/12 cuda cudatoolkit/12.8 cudatoolkit/12.4 cudatoolkit || true
+  set_cuda_home_from_nvcc
+  if ! cuda_home_ok; then
+    set_cuda_home_from_candidates || true
+  fi
+
+  if ! cuda_home_ok; then
+    echo "ERROR: CUDA toolkit was not found. SGLang/Triton JIT needs CUDA_HOME and nvcc."
+    echo "Try checking CUDA modules on the login node:"
+    echo "  module avail cuda"
+    echo "Then run, for example:"
+    echo "  sbatch --account=<project_id> --export=ALL,CUDA_MODULE=<module-name> scripts/slurm_run_benchmark.sh"
+    exit 1
+  fi
+
+  export PATH="$CUDA_HOME/bin:$PATH"
+  export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
 }
 
 ensure_managed_python() {
@@ -421,6 +485,12 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
   exit 1
 fi
 nvidia-smi
+echo
+
+echo "== Ensure CUDA toolkit for SGLang/Triton JIT =="
+ensure_cuda_home
+echo "CUDA_HOME=$CUDA_HOME"
+nvcc --version | sed -n '1,4p'
 echo
 
 echo "== Tool versions =="
