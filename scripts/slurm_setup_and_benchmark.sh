@@ -279,12 +279,43 @@ raise SystemExit(0 if importlib.util.find_spec("deep_gemm") is None else 1)
 PY
 }
 
+deep_gemm_module_dir() {
+  [ -x "$RUNTIME_DIR/.venv/bin/python" ] || return 1
+  "$RUNTIME_DIR/.venv/bin/python" - <<'PY'
+import importlib.util
+from pathlib import Path
+
+spec = importlib.util.find_spec("deep_gemm")
+if spec is None or spec.origin is None:
+    raise SystemExit(1)
+origin = Path(spec.origin).resolve()
+print(origin.parent if origin.name == "__init__.py" else origin)
+PY
+}
+
 remove_deep_gemm() {
   if deep_gemm_absent; then
     return 0
   fi
   echo "Removing DeepGEMM from the SGLang venv; it requires CUDA_HOME/Python.h on this cluster."
   uv pip uninstall -y deep_gemm deep-gemm || true
+  if ! deep_gemm_absent; then
+    local module_dir
+    local disabled_dir
+    module_dir="$(deep_gemm_module_dir)"
+    case "$module_dir" in
+      "$RUNTIME_DIR"/.venv/*/site-packages/deep_gemm)
+        disabled_dir="$RUNTIME_DIR/disabled_python_packages/deep_gemm_$(date +%Y%m%d_%H%M%S)"
+        mkdir -p "$(dirname "$disabled_dir")"
+        echo "Quarantining unmanaged DeepGEMM module: $module_dir -> $disabled_dir"
+        mv "$module_dir" "$disabled_dir"
+        ;;
+      *)
+        echo "ERROR: refusing to move unexpected DeepGEMM path: $module_dir"
+        return 1
+        ;;
+    esac
+  fi
   deep_gemm_absent
 }
 

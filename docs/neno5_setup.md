@@ -98,6 +98,8 @@ The benchmark job will:
   environment and can fail during import on HPC nodes
 - remove the optional `deep_gemm` package from the SGLang venv so SGLang does
   not import it before checking the DeepGEMM environment flag
+- quarantine unmanaged `site-packages/deep_gemm` files if package metadata is
+  missing and `uv pip uninstall` cannot remove them
 - configure OpenClaw to use local SGLang
 - run the R1/R2/R3 benchmark
 - write results under `benchmark_results/neno5_<jobid>/`
