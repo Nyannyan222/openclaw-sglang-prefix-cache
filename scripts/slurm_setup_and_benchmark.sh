@@ -769,6 +769,7 @@ echo "== Run prefix-cache benchmark =="
 cd "$PROJECT_ROOT"
 "$RUNTIME_DIR/.venv/bin/python" bench_sglang_prefix_cache.py \
   --base-url "http://127.0.0.1:${SGLANG_PORT}/v1" \
+  --model "$MODEL_ID" \
   --log-file "$SGLANG_LOG" \
   --output-dir "$RESULT_DIR" \
   --timeout 180 \

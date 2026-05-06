@@ -137,6 +137,8 @@ The benchmark job will:
 - skip the optional OpenClaw smoke generation by default, because the
   prefix-cache benchmark talks to SGLang directly
 - run the R1/R2/R3 benchmark
+- pass the active `MODEL_ID` into the benchmark script so JSON metadata records
+  the correct model
 - write results under `benchmark_results/neno5_<model>_<jobid>/`
 
 The original all-in-one job is still available when you want setup and benchmark
