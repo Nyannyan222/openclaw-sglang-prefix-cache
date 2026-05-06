@@ -30,7 +30,71 @@ Check GPU access:
 nvidia-smi
 ```
 
-## 2. Install Basic Tools
+## 2. Clone The GitHub Repository
+
+On the login node:
+
+```bash
+git clone https://github.com/Nyannyan222/openclaw-sglang-prefix-cache.git
+cd openclaw-sglang-prefix-cache
+```
+
+Run the lightweight check:
+
+```bash
+bash scripts/neno5_login_node_check.sh
+```
+
+Do not start SGLang on the login node. Use the SLURM job script below.
+
+## 3. Easiest Path: Submit The SLURM Setup + Benchmark Job
+
+From the repository root:
+
+```bash
+sbatch scripts/slurm_setup_and_benchmark.sh
+```
+
+Check your job:
+
+```bash
+squeue --me
+```
+
+After it starts, inspect the output file:
+
+```bash
+ls -lh slurm-*-openclaw-sglang.out
+tail -n 120 slurm-*-openclaw-sglang.out
+```
+
+The job will:
+
+- install OpenClaw under `/work/$USER/openclaw-sglang/npm`
+- install SGLang under `/work/$USER/openclaw-sglang/runtime/.venv`
+- start SGLang on `127.0.0.1:30000`
+- enable RadixAttention prefix cache by not passing `--disable-radix-cache`
+- enable request/KV cache logging
+- configure OpenClaw to use local SGLang
+- run the R1/R2/R3 benchmark
+- write results under `benchmark_results/neno5_<jobid>/`
+
+If the site requires a different partition or account:
+
+```bash
+sbatch -p <partition> -A <account> scripts/slurm_setup_and_benchmark.sh
+```
+
+The default script uses:
+
+```text
+partition: dev
+gpu: 1
+time: 2 hours
+memory: 64 GB
+```
+
+## 4. Manual Setup: Install Basic Tools
 
 Check Python and Node:
 
@@ -52,7 +116,7 @@ Make sure your user-local binary path is available:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## 3. Install OpenClaw
+## 5. Manual Setup: Install OpenClaw
 
 Install the CLI into your user directory:
 
@@ -65,7 +129,7 @@ openclaw --version
 
 Initialize OpenClaw later after SGLang is running, so the SGLang endpoint can be registered as a model provider.
 
-## 4. Install SGLang Runtime
+## 6. Manual Setup: Install SGLang Runtime
 
 Create a clean runtime directory:
 
@@ -90,7 +154,7 @@ if torch.cuda.is_available():
 PY
 ```
 
-## 5. Start SGLang With Prefix Cache And Logging
+## 7. Manual Setup: Start SGLang With Prefix Cache And Logging
 
 RadixAttention prefix cache is enabled by default. Do not pass:
 
@@ -173,7 +237,7 @@ log_requests=True
 KV Cache is allocated
 ```
 
-## 6. Configure OpenClaw To Use SGLang
+## 8. Manual Setup: Configure OpenClaw To Use SGLang
 
 Register the local SGLang OpenAI-compatible endpoint:
 
@@ -225,7 +289,7 @@ Expected output includes:
 }
 ```
 
-## 7. Run The Benchmark
+## 9. Manual Setup: Run The Benchmark
 
 Clone this project repository on `neno5`/`nano5`, then:
 
@@ -263,7 +327,7 @@ R2 = A+B+C -> high cached_tokens
 R3 = C+A+B -> much lower cached_tokens than R2
 ```
 
-## 8. What To Tell The Professor
+## 10. What To Tell The Professor
 
 You can report:
 
@@ -280,4 +344,3 @@ This motivates the next stage:
 ```text
 Add sub-context-aware cache instrumentation in SGLang, starting with logging around schedule_policy.match_prefix_for_req().
 ```
-

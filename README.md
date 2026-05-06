@@ -19,6 +19,12 @@ This repository contains the initial setup notes and benchmark artifacts for tes
 - `docs/neno5_setup.md`  
   Step-by-step instructions for reproducing the initial OpenClaw + SGLang runtime setup on `neno5`/`nano5`.
 
+- `scripts/slurm_setup_and_benchmark.sh`  
+  SLURM job that installs OpenClaw/SGLang on a compute node, starts SGLang with logging/metrics, configures OpenClaw, and runs the benchmark.
+
+- `scripts/neno5_login_node_check.sh`  
+  Lightweight login-node sanity check. It does not run SGLang or GPU workload.
+
 ## Baseline Result
 
 Latest benchmark:
@@ -50,3 +56,15 @@ python3 bench_sglang_prefix_cache.py \
   --max-tokens 64
 ```
 
+## neno5/nano5 Quick Start
+
+On the login node:
+
+```bash
+git clone https://github.com/Nyannyan222/openclaw-sglang-prefix-cache.git
+cd openclaw-sglang-prefix-cache
+bash scripts/neno5_login_node_check.sh
+sbatch scripts/slurm_setup_and_benchmark.sh
+```
+
+Do not start SGLang directly on the login node. The SLURM script runs it inside a GPU job.
