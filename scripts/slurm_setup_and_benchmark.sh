@@ -26,6 +26,7 @@ NPM_PREFIX="$WORK_ROOT/npm"
 NODE_INSTALL_DIR="$WORK_ROOT/node"
 UV_BIN_DIR="$WORK_ROOT/uv/bin"
 UV_CACHE_DIR="$WORK_ROOT/uv-cache"
+UV_PYTHON_INSTALL_DIR="$WORK_ROOT/uv-python"
 SGLANG_LOG="$LOG_DIR/sglang_openclaw_${SLURM_JOB_ID:-manual}.log"
 RESULT_DIR="$PROJECT_ROOT/benchmark_results/neno5_${SLURM_JOB_ID:-manual}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}"
@@ -36,6 +37,7 @@ OPENCLAW_PACKAGE="${OPENCLAW_PACKAGE:-openclaw@latest}"
 SGLANG_PACKAGE="${SGLANG_PACKAGE:-sglang==0.5.9}"
 RESET_VENV="${RESET_VENV:-0}"
 MODE="${MODE:-all}"
+MANAGED_PYTHON_VERSION="${MANAGED_PYTHON_VERSION:-3.11}"
 
 case "$MODE" in
   all|setup|run) ;;
@@ -45,12 +47,13 @@ case "$MODE" in
     ;;
 esac
 
-mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$UV_BIN_DIR" "$UV_CACHE_DIR" "$RESULT_DIR"
+mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$UV_BIN_DIR" "$UV_CACHE_DIR" "$UV_PYTHON_INSTALL_DIR" "$RESULT_DIR"
 
 export PATH="$UV_BIN_DIR:$NODE_INSTALL_DIR/bin:$NPM_PREFIX/bin:$HOME/.local/bin:$PATH"
 export HF_HOME="$HF_HOME_DIR"
 export HF_HUB_ENABLE_HF_TRANSFER=1
 export UV_CACHE_DIR
+export UV_PYTHON_INSTALL_DIR
 export SGLANG_ENABLE_JIT_DEEPGEMM="${SGLANG_ENABLE_JIT_DEEPGEMM:-false}"
 export SGLANG_JIT_DEEPGEMM_PRECOMPILE="${SGLANG_JIT_DEEPGEMM_PRECOMPILE:-false}"
 
@@ -222,6 +225,49 @@ install_uv() {
   command -v uv >/dev/null 2>&1
 }
 
+python_has_headers() {
+  [ -x "$1" ] || command -v "$1" >/dev/null 2>&1 || return 1
+  "$1" - <<'PY' >/dev/null 2>&1
+from pathlib import Path
+import sysconfig
+
+include = sysconfig.get_config_var("INCLUDEPY")
+raise SystemExit(0 if include and (Path(include) / "Python.h").exists() else 1)
+PY
+}
+
+ensure_managed_python() {
+  if python_has_headers "$PYTHON_BIN"; then
+    echo "Selected Python has headers: $PYTHON_BIN"
+    return 0
+  fi
+
+  if [ "$MODE" = "run" ]; then
+    echo "ERROR: selected Python does not provide Python.h, and run mode will not install Python."
+    echo "Run setup first:"
+    echo "  sbatch --account=<project_id> scripts/slurm_setup_env.sh"
+    exit 1
+  fi
+
+  echo "Selected Python lacks Python.h; installing uv-managed Python $MANAGED_PYTHON_VERSION"
+  uv python install "$MANAGED_PYTHON_VERSION"
+  PYTHON_BIN="$(uv python find "$MANAGED_PYTHON_VERSION")"
+  export PYTHON_BIN
+
+  if ! python_has_headers "$PYTHON_BIN"; then
+    echo "ERROR: uv-managed Python was installed but Python.h is still missing."
+    "$PYTHON_BIN" - <<'PY' || true
+import sysconfig
+print("INCLUDEPY", sysconfig.get_config_var("INCLUDEPY"))
+PY
+    exit 1
+  fi
+
+  RESET_VENV=1
+  export RESET_VENV
+  echo "Using uv-managed Python with headers: $PYTHON_BIN"
+}
+
 install_openclaw() {
   if command -v openclaw >/dev/null 2>&1 && openclaw --version >/dev/null 2>&1; then
     return 0
@@ -244,6 +290,9 @@ venv_needs_recreate() {
     return 0
   fi
   if [ ! -x "$RUNTIME_DIR/.venv/bin/python" ]; then
+    return 0
+  fi
+  if ! python_has_headers "$RUNTIME_DIR/.venv/bin/python"; then
     return 0
   fi
   if "$RUNTIME_DIR/.venv/bin/python" - <<'PY' >/dev/null 2>&1
@@ -343,6 +392,7 @@ echo "MODEL_ID=$MODEL_ID"
 echo "OPENCLAW_PACKAGE=$OPENCLAW_PACKAGE"
 echo "SGLANG_PACKAGE=$SGLANG_PACKAGE"
 echo "MODE=$MODE"
+echo "MANAGED_PYTHON_VERSION=$MANAGED_PYTHON_VERSION"
 echo
 
 echo "== GPU =="
@@ -379,6 +429,21 @@ else
   install_uv
 fi
 uv --version
+echo
+
+echo "== Ensure Python headers for Triton =="
+if [ "$MODE" = "run" ]; then
+  if [ ! -x "$RUNTIME_DIR/.venv/bin/python" ] || ! python_has_headers "$RUNTIME_DIR/.venv/bin/python"; then
+    echo "ERROR: SGLang venv Python lacks Python.h, which Triton needs at runtime."
+    echo "Run setup to rebuild the venv with uv-managed Python:"
+    echo "  sbatch --account=<project_id> scripts/slurm_setup_env.sh"
+    exit 1
+  fi
+  echo "SGLang venv Python has headers: $RUNTIME_DIR/.venv/bin/python"
+else
+  ensure_managed_python
+fi
+"$PYTHON_BIN" --version
 echo
 
 echo "== Install OpenClaw if needed =="
@@ -545,7 +610,7 @@ echo
 
 echo "== Run prefix-cache benchmark =="
 cd "$PROJECT_ROOT"
-"$PYTHON_BIN" bench_sglang_prefix_cache.py \
+"$RUNTIME_DIR/.venv/bin/python" bench_sglang_prefix_cache.py \
   --base-url "http://127.0.0.1:${SGLANG_PORT}/v1" \
   --log-file "$SGLANG_LOG" \
   --output-dir "$RESULT_DIR" \

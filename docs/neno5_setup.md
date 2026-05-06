@@ -84,6 +84,8 @@ The setup job will:
   available
 - install `uv` under `/work/$USER/openclaw-sglang/uv/bin` if Python does not
   provide `pip`
+- install uv-managed Python under `/work/$USER/openclaw-sglang/uv-python` when
+  the cluster Python lacks `Python.h`, which Triton needs at runtime
 - install OpenClaw under `/work/$USER/openclaw-sglang/npm`
 - install pinned SGLang under `/work/$USER/openclaw-sglang/runtime/.venv`
   and rebuild the venv if a different SGLang version is already present
