@@ -79,10 +79,13 @@ The job will:
 - install `uv` under `/work/$USER/openclaw-sglang/uv/bin` if Python does not
   provide `pip`
 - install OpenClaw under `/work/$USER/openclaw-sglang/npm`
-- install SGLang under `/work/$USER/openclaw-sglang/runtime/.venv`
+- install pinned SGLang under `/work/$USER/openclaw-sglang/runtime/.venv`
+  and rebuild the venv if a different SGLang version is already present
 - start SGLang on `127.0.0.1:30000`
 - enable RadixAttention prefix cache by not passing `--disable-radix-cache`
 - enable request/KV cache logging
+- disable JIT DeepGEMM by default because it needs a complete CUDA development
+  environment and can fail during import on HPC nodes
 - configure OpenClaw to use local SGLang
 - run the R1/R2/R3 benchmark
 - write results under `benchmark_results/neno5_<jobid>/`

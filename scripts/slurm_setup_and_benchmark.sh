@@ -33,7 +33,7 @@ SGLANG_PORT="${SGLANG_PORT:-30000}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 NODE_VERSION="${NODE_VERSION:-v22.19.0}"
 OPENCLAW_PACKAGE="${OPENCLAW_PACKAGE:-openclaw@latest}"
-SGLANG_PACKAGE="${SGLANG_PACKAGE:-sglang}"
+SGLANG_PACKAGE="${SGLANG_PACKAGE:-sglang==0.5.9}"
 RESET_VENV="${RESET_VENV:-0}"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$UV_BIN_DIR" "$UV_CACHE_DIR" "$RESULT_DIR"
@@ -42,6 +42,8 @@ export PATH="$UV_BIN_DIR:$NODE_INSTALL_DIR/bin:$NPM_PREFIX/bin:$HOME/.local/bin:
 export HF_HOME="$HF_HOME_DIR"
 export HF_HUB_ENABLE_HF_TRANSFER=1
 export UV_CACHE_DIR
+export SGLANG_ENABLE_JIT_DEEPGEMM="${SGLANG_ENABLE_JIT_DEEPGEMM:-false}"
+export SGLANG_JIT_DEEPGEMM_PRECOMPILE="${SGLANG_JIT_DEEPGEMM_PRECOMPILE:-false}"
 
 if [ -f /etc/profile.d/modules.sh ]; then
   # Many HPC systems expose Node/Python/CUDA through environment modules.
@@ -233,6 +235,21 @@ PY
   return 0
 }
 
+installed_sglang_matches() {
+  [ -x "$RUNTIME_DIR/.venv/bin/python" ] || return 1
+  "$RUNTIME_DIR/.venv/bin/python" - "$SGLANG_PACKAGE" <<'PY' >/dev/null 2>&1
+import importlib.metadata
+import sys
+
+target = sys.argv[1]
+if "==" not in target:
+    raise SystemExit(0)
+_, expected = target.split("==", 1)
+actual = importlib.metadata.version("sglang")
+raise SystemExit(0 if actual == expected else 1)
+PY
+}
+
 reset_sglang_venv() {
   local venv_path="$RUNTIME_DIR/.venv"
   case "$venv_path" in
@@ -297,15 +314,22 @@ if venv_needs_recreate; then
   echo "Creating a fresh SGLang venv with $PYTHON_BIN"
   reset_sglang_venv
   uv venv --python "$PYTHON_BIN" .venv
+elif ! installed_sglang_matches; then
+  echo "Installed SGLang does not match $SGLANG_PACKAGE; rebuilding venv"
+  reset_sglang_venv
+  uv venv --python "$PYTHON_BIN" .venv
 fi
 source .venv/bin/activate
 uv pip install -U "$SGLANG_PACKAGE" hf_transfer
 python - <<'PY'
 import importlib.util
+import os
 import sys
 
 if importlib.util.find_spec("sglang") is None:
     raise SystemExit("SGLang import check failed")
+
+print("SGLANG_ENABLE_JIT_DEEPGEMM", os.environ.get("SGLANG_ENABLE_JIT_DEEPGEMM"))
 
 import torch
 print("torch", torch.__version__)
