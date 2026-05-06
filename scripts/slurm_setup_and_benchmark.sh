@@ -27,12 +27,40 @@ SGLANG_LOG="$LOG_DIR/sglang_openclaw_${SLURM_JOB_ID:-manual}.log"
 RESULT_DIR="$PROJECT_ROOT/benchmark_results/neno5_${SLURM_JOB_ID:-manual}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}"
 SGLANG_PORT="${SGLANG_PORT:-30000}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$RESULT_DIR"
 
 export PATH="$NPM_PREFIX/bin:$HOME/.local/bin:$PATH"
 export HF_HOME="$HF_HOME_DIR"
 export HF_HUB_ENABLE_HF_TRANSFER=1
+
+if [ -f /etc/profile.d/modules.sh ]; then
+  # Many HPC systems expose Node/Python/CUDA through environment modules.
+  # shellcheck disable=SC1091
+  source /etc/profile.d/modules.sh
+fi
+
+try_module_load() {
+  for module_name in "$@"; do
+    if command -v module >/dev/null 2>&1 && module load "$module_name" >/dev/null 2>&1; then
+      echo "Loaded module: $module_name"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ -n "${NODE_MODULE:-}" ]; then
+  try_module_load "$NODE_MODULE" || {
+    echo "ERROR: requested NODE_MODULE=$NODE_MODULE could not be loaded."
+    exit 1
+  }
+fi
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  try_module_load nodejs node node/20 nodejs/20 node/22 nodejs/22 npm || true
+fi
 
 echo "== Job context =="
 date
@@ -49,14 +77,22 @@ nvidia-smi || true
 echo
 
 echo "== Tool versions =="
-python3 --version
+"$PYTHON_BIN" --version
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "ERROR: node/npm not found."
+  echo "Try checking available modules on the login node with:"
+  echo "  module avail node"
+  echo "Then submit with, for example:"
+  echo "  sbatch --export=ALL,NODE_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh"
+  exit 1
+fi
 node --version
 npm --version
 echo
 
 echo "== Install uv if needed =="
 if ! command -v uv >/dev/null 2>&1; then
-  python3 -m pip install --user uv
+  "$PYTHON_BIN" -m pip install --user uv
 fi
 uv --version
 echo
@@ -71,7 +107,7 @@ echo
 echo "== Create/update SGLang venv =="
 cd "$RUNTIME_DIR"
 if [ ! -d .venv ]; then
-  uv venv --python 3.12 .venv
+  uv venv --python "$PYTHON_BIN" .venv
 fi
 source .venv/bin/activate
 uv pip install -U sglang hf_transfer
@@ -191,4 +227,3 @@ find "$RESULT_DIR" -maxdepth 1 -type f -print
 echo
 echo "== Cache log sample =="
 grep -E "#cached-token|cached_tokens|request.finished" "$SGLANG_LOG" | tail -n 40 || true
-
