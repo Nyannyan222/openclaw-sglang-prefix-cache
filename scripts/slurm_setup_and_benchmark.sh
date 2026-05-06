@@ -271,6 +271,23 @@ raise SystemExit(0 if actual == expected else 1)
 PY
 }
 
+deep_gemm_absent() {
+  [ -x "$RUNTIME_DIR/.venv/bin/python" ] || return 1
+  "$RUNTIME_DIR/.venv/bin/python" - <<'PY' >/dev/null 2>&1
+import importlib.util
+raise SystemExit(0 if importlib.util.find_spec("deep_gemm") is None else 1)
+PY
+}
+
+remove_deep_gemm() {
+  if deep_gemm_absent; then
+    return 0
+  fi
+  echo "Removing DeepGEMM from the SGLang venv; it requires CUDA_HOME/Python.h on this cluster."
+  uv pip uninstall -y deep_gemm deep-gemm || true
+  deep_gemm_absent
+}
+
 reset_sglang_venv() {
   local venv_path="$RUNTIME_DIR/.venv"
   case "$venv_path" in
@@ -355,6 +372,12 @@ if [ "$MODE" = "run" ]; then
     echo "  sbatch --account=<project_id> scripts/slurm_setup_env.sh"
     exit 1
   fi
+  if ! deep_gemm_absent; then
+    echo "ERROR: deep_gemm is still installed in the SGLang venv and will crash on this cluster."
+    echo "Run setup once to remove it:"
+    echo "  sbatch --account=<project_id> scripts/slurm_setup_env.sh"
+    exit 1
+  fi
 elif venv_needs_recreate; then
   echo "Creating a fresh SGLang venv with $PYTHON_BIN"
   reset_sglang_venv
@@ -367,6 +390,7 @@ fi
 source .venv/bin/activate
 if [ "$MODE" != "run" ]; then
   uv pip install -U "$SGLANG_PACKAGE" hf_transfer
+  remove_deep_gemm
 fi
 python - <<'PY'
 import importlib.util
@@ -375,6 +399,8 @@ import sys
 
 if importlib.util.find_spec("sglang") is None:
     raise SystemExit("SGLang import check failed")
+if importlib.util.find_spec("deep_gemm") is not None:
+    raise SystemExit("deep_gemm is still installed; setup should remove it")
 
 print("SGLANG_ENABLE_JIT_DEEPGEMM", os.environ.get("SGLANG_ENABLE_JIT_DEEPGEMM"))
 
