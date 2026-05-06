@@ -2,17 +2,17 @@
 # Run OpenClaw + SGLang setup and the prefix-cache benchmark inside a SLURM GPU job.
 #
 # Submit from the repository root:
-#   sbatch --account=<project_id> scripts/slurm_setup_and_benchmark.sh
+#   sbatch --account=<project_id> --time=01:00:00 scripts/slurm_setup_and_benchmark.sh
 #
 # If your site requires a different partition/account, override at submission:
-#   sbatch -p <partition> -A <account> --time=00:30:00 scripts/slurm_setup_and_benchmark.sh
+#   sbatch -p <partition> -A <account> --time=01:00:00 scripts/slurm_setup_and_benchmark.sh
 
 #SBATCH --job-name=oc-sglang-cache
 #SBATCH --partition=dev
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=00:30:00
+#SBATCH --time=01:00:00
 #SBATCH --output=slurm-%j-openclaw-sglang.out
 
 set -euo pipefail
@@ -32,6 +32,9 @@ MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}"
 SGLANG_PORT="${SGLANG_PORT:-30000}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 NODE_VERSION="${NODE_VERSION:-v22.19.0}"
+OPENCLAW_PACKAGE="${OPENCLAW_PACKAGE:-openclaw@latest}"
+SGLANG_PACKAGE="${SGLANG_PACKAGE:-sglang}"
+RESET_VENV="${RESET_VENV:-0}"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$UV_BIN_DIR" "$UV_CACHE_DIR" "$RESULT_DIR"
 
@@ -70,7 +73,7 @@ node_version_ok() {
 }
 
 if ! node_version_ok; then
-  try_module_load nodejs node node/20 nodejs/20 node/22 nodejs/22 npm || true
+  try_module_load nodejs node node/22 nodejs/22 node/24 nodejs/24 npm || true
 fi
 
 python_version_ok() {
@@ -196,6 +199,53 @@ install_uv() {
   command -v uv >/dev/null 2>&1
 }
 
+install_openclaw() {
+  if command -v openclaw >/dev/null 2>&1 && openclaw --version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Installing OpenClaw package: $OPENCLAW_PACKAGE"
+  npm install -g "$OPENCLAW_PACKAGE" --prefix "$NPM_PREFIX"
+  export PATH="$NPM_PREFIX/bin:$PATH"
+
+  if ! command -v openclaw >/dev/null 2>&1 || ! openclaw --version >/dev/null 2>&1; then
+    echo "ERROR: OpenClaw installation finished, but the openclaw command is not runnable."
+    echo "Node: $(node --version 2>/dev/null || echo missing)"
+    echo "npm: $(npm --version 2>/dev/null || echo missing)"
+    return 1
+  fi
+}
+
+venv_needs_recreate() {
+  if [ "$RESET_VENV" = "1" ]; then
+    return 0
+  fi
+  if [ ! -x "$RUNTIME_DIR/.venv/bin/python" ]; then
+    return 0
+  fi
+  if "$RUNTIME_DIR/.venv/bin/python" - <<'PY' >/dev/null 2>&1
+import sys
+sys.exit(0 if sys.version_info >= (3, 9) else 1)
+PY
+  then
+    return 1
+  fi
+  return 0
+}
+
+reset_sglang_venv() {
+  local venv_path="$RUNTIME_DIR/.venv"
+  case "$venv_path" in
+    "$WORK_ROOT"/runtime/.venv)
+      rm -rf "$venv_path"
+      ;;
+    *)
+      echo "ERROR: refusing to remove unexpected venv path: $venv_path"
+      exit 1
+      ;;
+  esac
+}
+
 echo "== Job context =="
 date
 hostname
@@ -204,10 +254,16 @@ pwd
 echo "PROJECT_ROOT=$PROJECT_ROOT"
 echo "WORK_ROOT=$WORK_ROOT"
 echo "MODEL_ID=$MODEL_ID"
+echo "OPENCLAW_PACKAGE=$OPENCLAW_PACKAGE"
+echo "SGLANG_PACKAGE=$SGLANG_PACKAGE"
 echo
 
 echo "== GPU =="
-nvidia-smi || true
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+  echo "ERROR: nvidia-smi is not available. This job must run on a GPU compute node."
+  exit 1
+fi
+nvidia-smi
 echo
 
 echo "== Tool versions =="
@@ -231,26 +287,34 @@ uv --version
 echo
 
 echo "== Install OpenClaw if needed =="
-if ! command -v openclaw >/dev/null 2>&1; then
-  npm install -g openclaw@latest --prefix "$NPM_PREFIX"
-fi
+install_openclaw
 openclaw --version
 echo
 
 echo "== Create/update SGLang venv =="
 cd "$RUNTIME_DIR"
-if [ ! -d .venv ]; then
+if venv_needs_recreate; then
+  echo "Creating a fresh SGLang venv with $PYTHON_BIN"
+  reset_sglang_venv
   uv venv --python "$PYTHON_BIN" .venv
 fi
 source .venv/bin/activate
-uv pip install -U sglang hf_transfer
+uv pip install -U "$SGLANG_PACKAGE" hf_transfer
 python - <<'PY'
+import importlib.util
+import sys
+
+if importlib.util.find_spec("sglang") is None:
+    raise SystemExit("SGLang import check failed")
+
 import torch
 print("torch", torch.__version__)
 print("cuda available", torch.cuda.is_available())
 if torch.cuda.is_available():
     print("device", torch.cuda.get_device_name(0))
     print("capability", torch.cuda.get_device_capability(0))
+else:
+    raise SystemExit("PyTorch cannot see CUDA inside the SGLang venv")
 PY
 echo
 
@@ -345,7 +409,7 @@ echo
 
 echo "== Run prefix-cache benchmark =="
 cd "$PROJECT_ROOT"
-python3 bench_sglang_prefix_cache.py \
+"$PYTHON_BIN" bench_sglang_prefix_cache.py \
   --base-url "http://127.0.0.1:${SGLANG_PORT}/v1" \
   --log-file "$SGLANG_LOG" \
   --output-dir "$RESULT_DIR" \

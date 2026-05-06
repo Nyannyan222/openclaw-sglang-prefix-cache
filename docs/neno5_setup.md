@@ -55,7 +55,7 @@ On NCHC nano5/neno5 you may need to pass the project account and a valid `dev`
 time limit. For the project shown by SLURM as `MST114180`, use:
 
 ```bash
-sbatch --account=MST114180 --time=00:30:00 scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 --time=01:00:00 scripts/slurm_setup_and_benchmark.sh
 ```
 
 Check your job:
@@ -90,7 +90,7 @@ The job will:
 If the site requires a different partition or account:
 
 ```bash
-sbatch -p <partition> -A <account> --time=00:30:00 scripts/slurm_setup_and_benchmark.sh
+sbatch -p <partition> -A <account> --time=01:00:00 scripts/slurm_setup_and_benchmark.sh
 ```
 
 The default script uses:
@@ -98,7 +98,7 @@ The default script uses:
 ```text
 partition: dev
 gpu: 1
-time: 30 minutes
+time: 1 hour
 memory: 64 GB
 ```
 
@@ -112,7 +112,7 @@ module avail node
 Then submit with the matching module name:
 
 ```bash
-sbatch --account=MST114180 --time=00:30:00 --export=ALL,NODE_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 --time=01:00:00 --export=ALL,NODE_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
 ```
 
 If the job sees an old compute-node Python such as Python 3.6, check Python
@@ -125,7 +125,7 @@ module avail python
 Then submit with the matching module name:
 
 ```bash
-sbatch --account=MST114180 --time=00:30:00 --export=ALL,PYTHON_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 --time=01:00:00 --export=ALL,PYTHON_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
 ```
 
 ## 4. Manual Setup: Install Basic Tools
