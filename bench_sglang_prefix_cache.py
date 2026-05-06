@@ -1,0 +1,455 @@
+#!/usr/bin/env python3
+"""Benchmark SGLang RadixAttention prefix-cache behavior for R1/R2/R3 prompts.
+
+The script sends:
+  R1 = A + B + C + question1
+  R2 = A + B + C + question2
+  R3 = C + A + B + question3
+
+It records OpenAI-compatible response usage, Prometheus metric deltas, and,
+when the SGLang log file is readable, per-request cached token counts from the
+`request.finished` JSON log events.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime as dt
+import hashlib
+import json
+import os
+import pathlib
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
+from typing import Any
+
+
+METRICS_OF_INTEREST = (
+    "sglang:cached_tokens_total",
+    "sglang:prompt_tokens_total",
+    "sglang:generation_tokens_total",
+    "sglang:num_requests_total",
+    "sglang:cache_hit_rate",
+    "sglang:new_token_ratio",
+    "sglang:num_used_tokens",
+    "sglang:realtime_tokens_total",
+)
+
+
+def now_utc_iso() -> str:
+    return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+
+
+def normalize_base_url(base_url: str) -> str:
+    return base_url.rstrip("/")
+
+
+def derive_metrics_url(base_url: str) -> str:
+    base_url = normalize_base_url(base_url)
+    if base_url.endswith("/v1"):
+        return base_url[:-3] + "/metrics"
+    return base_url + "/metrics"
+
+
+def http_json(
+    url: str,
+    payload: dict[str, Any] | None = None,
+    timeout: float = 60.0,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    headers = {"Accept": "application/json"}
+    data = None
+    method = "GET"
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+        method = "POST"
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"HTTP {exc.code} from {url}: {body}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Failed to reach {url}: {exc}") from exc
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Non-JSON response from {url}: {raw[:500]}") from exc
+
+
+def http_text(url: str, timeout: float = 20.0) -> str:
+    req = urllib.request.Request(url, headers={"Accept": "text/plain"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def parse_prometheus_metrics(text: str) -> dict[str, float]:
+    """Return summed metric values by metric name."""
+    values: dict[str, float] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.rsplit(" ", 1)
+        if len(parts) != 2:
+            continue
+        name_with_labels, value_text = parts
+        name = name_with_labels.split("{", 1)[0]
+        try:
+            value = float(value_text)
+        except ValueError:
+            continue
+        values[name] = values.get(name, 0.0) + value
+    return values
+
+
+def scrape_metrics(metrics_url: str, timeout: float) -> dict[str, float]:
+    return parse_prometheus_metrics(http_text(metrics_url, timeout=timeout))
+
+
+def metric_delta(
+    before: dict[str, float],
+    after: dict[str, float],
+    metric_name: str,
+    default_when_absent: float | None = None,
+) -> float | None:
+    if metric_name not in before and metric_name not in after:
+        return default_when_absent
+    return after.get(metric_name, 0.0) - before.get(metric_name, 0.0)
+
+
+def metric_value(
+    metrics: dict[str, float], metric_name: str, default_when_absent: float | None = None
+) -> float | None:
+    if metric_name not in metrics:
+        return default_when_absent
+    return metrics[metric_name]
+
+
+def is_counter_metric(metric_name: str) -> bool:
+    return metric_name.endswith("_total")
+
+
+def metric_default(metric_name: str) -> float | None:
+    if is_counter_metric(metric_name):
+        return 0.0
+    if metric_name in {"sglang:cache_hit_rate", "sglang:new_token_ratio"}:
+        return 0.0
+    return None
+
+
+def safe_get(mapping: Any, path: list[str | int], default: Any = None) -> Any:
+    cur: Any = mapping
+    for part in path:
+        if isinstance(part, int):
+            if not isinstance(cur, list) or part >= len(cur):
+                return default
+            cur = cur[part]
+            continue
+        if not isinstance(cur, dict) or part not in cur:
+            return default
+        cur = cur[part]
+    return cur
+
+
+def prompt_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def make_subcontexts(experiment_id: str) -> dict[str, str]:
+    return {
+        "A": f"""
+[SUBCONTEXT A | experiment={experiment_id}]
+Product Alpha is a quiet workstation laptop for data science students.
+Alpha has 32 GB memory, a 14 inch display, and excellent keyboard travel.
+Alpha's strongest point is local Python development and light CUDA testing.
+Alpha's limitation is its small battery under sustained GPU load.
+Alpha should be recommended when the user values portability and coding comfort.
+""".strip(),
+        "B": f"""
+[SUBCONTEXT B | experiment={experiment_id}]
+Product Beta is a compact inference server for lab experiments.
+Beta has 96 GB memory, dual network ports, and room for a full-size GPU.
+Beta's strongest point is serving local language models for several users.
+Beta's limitation is noise, heat, and higher idle power consumption.
+Beta should be recommended when the user values throughput and shared access.
+""".strip(),
+        "C": f"""
+[SUBCONTEXT C | experiment={experiment_id}]
+Product Gamma is a low-cost mini PC used as an always-on automation node.
+Gamma has 16 GB memory, integrated graphics, and very low idle power.
+Gamma's strongest point is running schedulers, scripts, and dashboards.
+Gamma's limitation is weak model inference performance.
+Gamma should be recommended when the user values low cost and reliability.
+""".strip(),
+    }
+
+
+def build_prompt(
+    experiment_id: str, order: list[str], subcontexts: dict[str, str], question: str
+) -> str:
+    intro = f"""
+Experiment id: {experiment_id}
+You are running a cache benchmark for SGLang.
+Use only the supplied subcontexts. Keep the answer to two short sentences.
+""".strip()
+    context_block = "\n\n".join(subcontexts[key] for key in order)
+    return f"{intro}\n\n{context_block}\n\n[QUESTION]\n{question}"
+
+
+def build_requests(experiment_id: str) -> list[dict[str, Any]]:
+    subcontexts = make_subcontexts(experiment_id)
+    specs = [
+        (
+            "R1_ABC",
+            ["A", "B", "C"],
+            "Which product best fits a portable student developer, and why?",
+        ),
+        (
+            "R2_ABC_same_prefix",
+            ["A", "B", "C"],
+            "Which product best fits a shared local inference lab, and why?",
+        ),
+        (
+            "R3_CAB_reordered",
+            ["C", "A", "B"],
+            "Which product best fits an always-on automation node, and why?",
+        ),
+    ]
+    rows = []
+    for name, order, question in specs:
+        prompt = build_prompt(experiment_id, order, subcontexts, question)
+        rows.append(
+            {
+                "name": name,
+                "order": "+".join(order),
+                "question": question,
+                "prompt": prompt,
+                "prompt_chars": len(prompt),
+                "prompt_sha256": prompt_sha256(prompt),
+            }
+        )
+    return rows
+
+
+def find_finished_log_event(log_file: str | None, request_id: str) -> dict[str, Any] | None:
+    if not log_file:
+        return None
+    path = pathlib.Path(log_file)
+    if not path.exists():
+        return None
+
+    found = None
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line.startswith("{") or request_id not in line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("event") == "request.finished" and event.get("rid") == request_id:
+                    found = event
+    except OSError:
+        return None
+    return found
+
+
+def run_one_request(
+    *,
+    req_spec: dict[str, Any],
+    chat_url: str,
+    metrics_url: str,
+    model: str,
+    api_key: str | None,
+    timeout: float,
+    max_tokens: int,
+    temperature: float,
+    log_file: str | None,
+    sleep_after_request: float,
+) -> dict[str, Any]:
+    before_metrics = scrape_metrics(metrics_url, timeout=min(timeout, 20.0))
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": req_spec["prompt"]}],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+
+    started = time.perf_counter()
+    response = http_json(chat_url, payload=payload, timeout=timeout, api_key=api_key)
+    latency_s = time.perf_counter() - started
+
+    if sleep_after_request:
+        time.sleep(sleep_after_request)
+    after_metrics = scrape_metrics(metrics_url, timeout=min(timeout, 20.0))
+
+    request_id = response.get("id", "")
+    log_event = find_finished_log_event(log_file, request_id)
+    meta_info = safe_get(log_event or {}, ["out", "meta_info"], {})
+    usage = response.get("usage") or {}
+
+    row: dict[str, Any] = {
+        "request_name": req_spec["name"],
+        "subcontext_order": req_spec["order"],
+        "question": req_spec["question"],
+        "prompt_chars": req_spec["prompt_chars"],
+        "prompt_sha256": req_spec["prompt_sha256"],
+        "response_id": request_id,
+        "latency_s": round(latency_s, 6),
+        "response_text": safe_get(response, ["choices", 0, "message", "content"], ""),
+        "usage_prompt_tokens": usage.get("prompt_tokens"),
+        "usage_completion_tokens": usage.get("completion_tokens"),
+        "usage_total_tokens": usage.get("total_tokens"),
+        "log_prompt_tokens": meta_info.get("prompt_tokens"),
+        "log_completion_tokens": meta_info.get("completion_tokens"),
+        "log_cached_tokens": meta_info.get("cached_tokens"),
+        "log_e2e_latency": meta_info.get("e2e_latency"),
+        "log_prefill_launch_latency": meta_info.get("prefill_launch_latency"),
+        "log_queue_time": meta_info.get("queue_time"),
+    }
+
+    for metric_name in METRICS_OF_INTEREST:
+        short_name = metric_name.replace("sglang:", "").replace("-", "_")
+        default = metric_default(metric_name)
+        row[f"metric_delta_{short_name}"] = metric_delta(
+            before_metrics, after_metrics, metric_name, default_when_absent=default
+        )
+        row[f"metric_after_{short_name}"] = metric_value(
+            after_metrics, metric_name, default_when_absent=default
+        )
+
+    row["_raw_response"] = response
+    row["_raw_log_event"] = log_event
+    return row
+
+
+def write_csv(path: pathlib.Path, rows: list[dict[str, Any]]) -> None:
+    hidden_prefix = "_"
+    fieldnames: list[str] = []
+    for row in rows:
+        for key in row:
+            if key.startswith(hidden_prefix):
+                continue
+            if key not in fieldnames:
+                fieldnames.append(key)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key) for key in fieldnames})
+
+
+def write_json(path: pathlib.Path, payload: dict[str, Any]) -> None:
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+
+def print_summary(rows: list[dict[str, Any]], json_path: pathlib.Path, csv_path: pathlib.Path) -> None:
+    print("\nBenchmark summary")
+    print("=================")
+    print(f"JSON: {json_path}")
+    print(f"CSV : {csv_path}")
+    print("")
+    print(
+        "request, order, prompt_tokens, cached_tokens(log), "
+        "cached_tokens_delta(metrics), latency_s"
+    )
+    for row in rows:
+        print(
+            f"{row['request_name']}, {row['subcontext_order']}, "
+            f"{row.get('usage_prompt_tokens')}, {row.get('log_cached_tokens')}, "
+            f"{row.get('metric_delta_cached_tokens_total')}, {row.get('latency_s')}"
+        )
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run R1/R2/R3 SGLang prefix-cache benchmark and write CSV/JSON."
+    )
+    parser.add_argument("--base-url", default="http://127.0.0.1:30000/v1")
+    parser.add_argument("--metrics-url", default=None)
+    parser.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
+    parser.add_argument("--api-key", default=os.environ.get("SGLANG_API_KEY"))
+    parser.add_argument("--log-file", default="/tmp/sglang_openclaw.log")
+    parser.add_argument("--output-dir", default="benchmark_results")
+    parser.add_argument("--max-tokens", type=int, default=64)
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument("--sleep-after-request", type=float, default=0.25)
+    parser.add_argument(
+        "--experiment-id",
+        default=None,
+        help="Optional id embedded into prompts. Defaults to a fresh UUID.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    base_url = normalize_base_url(args.base_url)
+    chat_url = base_url + "/chat/completions"
+    metrics_url = args.metrics_url or derive_metrics_url(base_url)
+    experiment_id = args.experiment_id or f"bench-{uuid.uuid4().hex[:12]}"
+
+    output_dir = pathlib.Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = f"sglang_prefix_cache_{stamp}"
+    json_path = output_dir / f"{stem}.json"
+    csv_path = output_dir / f"{stem}.csv"
+
+    request_specs = build_requests(experiment_id)
+    rows = []
+    for req_spec in request_specs:
+        print(f"Running {req_spec['name']} ({req_spec['order']})...")
+        rows.append(
+            run_one_request(
+                req_spec=req_spec,
+                chat_url=chat_url,
+                metrics_url=metrics_url,
+                model=args.model,
+                api_key=args.api_key,
+                timeout=args.timeout,
+                max_tokens=args.max_tokens,
+                temperature=args.temperature,
+                log_file=args.log_file,
+                sleep_after_request=args.sleep_after_request,
+            )
+        )
+
+    payload = {
+        "created_at": now_utc_iso(),
+        "experiment_id": experiment_id,
+        "base_url": base_url,
+        "metrics_url": metrics_url,
+        "model": args.model,
+        "log_file": args.log_file,
+        "requests": rows,
+    }
+    write_json(json_path, payload)
+    write_csv(csv_path, rows)
+    print_summary(rows, json_path, csv_path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
