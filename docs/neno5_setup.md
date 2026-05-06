@@ -64,6 +64,33 @@ After setup succeeds, submit the benchmark-only job:
 sbatch --account=MST114180 scripts/slurm_run_benchmark.sh
 ```
 
+To test one alternate model:
+
+```bash
+sbatch --account=MST114180 --export=ALL,MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct scripts/slurm_run_benchmark.sh
+```
+
+To compare several models, submit one benchmark job per model:
+
+```bash
+bash scripts/slurm_run_model_matrix.sh
+```
+
+The default model matrix is:
+
+```text
+Qwen/Qwen2.5-0.5B-Instruct
+Qwen/Qwen2.5-1.5B-Instruct
+Qwen/Qwen2.5-3B-Instruct
+```
+
+You can customize it:
+
+```bash
+MODELS="Qwen/Qwen2.5-0.5B-Instruct Qwen/Qwen2.5-1.5B-Instruct Qwen/Qwen2.5-3B-Instruct" \
+bash scripts/slurm_run_model_matrix.sh
+```
+
 Check your job:
 
 ```bash
@@ -106,7 +133,7 @@ The benchmark job will:
 - skip the optional OpenClaw smoke generation by default, because the
   prefix-cache benchmark talks to SGLang directly
 - run the R1/R2/R3 benchmark
-- write results under `benchmark_results/neno5_<jobid>/`
+- write results under `benchmark_results/neno5_<model>_<jobid>/`
 
 The original all-in-one job is still available when you want setup and benchmark
 in a single allocation:

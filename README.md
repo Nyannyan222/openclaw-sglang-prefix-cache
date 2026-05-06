@@ -28,6 +28,9 @@ This repository contains the initial setup notes and benchmark artifacts for tes
 - `scripts/slurm_run_benchmark.sh`
   Benchmark-only job. It reuses the setup runtime, starts SGLang, and runs R1/R2/R3.
 
+- `scripts/slurm_run_model_matrix.sh`
+  Submits one benchmark job per model for comparing prefix-cache behavior across models.
+
 - `scripts/neno5_login_node_check.sh`  
   Lightweight login-node sanity check. It does not run SGLang or GPU workload.
 
@@ -72,6 +75,25 @@ cd openclaw-sglang-prefix-cache
 bash scripts/neno5_login_node_check.sh
 sbatch --account=MST114180 scripts/slurm_setup_env.sh
 sbatch --account=MST114180 scripts/slurm_run_benchmark.sh
+```
+
+Run a single alternate model:
+
+```bash
+sbatch --account=MST114180 --export=ALL,MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct scripts/slurm_run_benchmark.sh
+```
+
+Run the default model matrix:
+
+```bash
+bash scripts/slurm_run_model_matrix.sh
+```
+
+Customize the model matrix:
+
+```bash
+MODELS="Qwen/Qwen2.5-0.5B-Instruct Qwen/Qwen2.5-1.5B-Instruct Qwen/Qwen2.5-3B-Instruct" \
+bash scripts/slurm_run_model_matrix.sh
 ```
 
 Do not start SGLang directly on the login node. The SLURM script runs it inside
