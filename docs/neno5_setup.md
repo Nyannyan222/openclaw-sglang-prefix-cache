@@ -73,8 +73,9 @@ tail -n 120 slurm-*-openclaw-sglang.out
 
 The job will:
 
-- install a local Node.js runtime under `/work/$USER/openclaw-sglang/node` if
-  no cluster Node module is available
+- install or update a local Node.js 22 runtime under
+  `/work/$USER/openclaw-sglang/node` if no compatible cluster Node module is
+  available
 - install `uv` under `/work/$USER/openclaw-sglang/uv/bin` if Python does not
   provide `pip`
 - install OpenClaw under `/work/$USER/openclaw-sglang/npm`

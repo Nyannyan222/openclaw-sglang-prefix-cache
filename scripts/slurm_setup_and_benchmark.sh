@@ -31,7 +31,7 @@ RESULT_DIR="$PROJECT_ROOT/benchmark_results/neno5_${SLURM_JOB_ID:-manual}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}"
 SGLANG_PORT="${SGLANG_PORT:-30000}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-NODE_VERSION="${NODE_VERSION:-v20.19.0}"
+NODE_VERSION="${NODE_VERSION:-v22.19.0}"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$UV_BIN_DIR" "$UV_CACHE_DIR" "$RESULT_DIR"
 
@@ -63,7 +63,13 @@ if [ -n "${NODE_MODULE:-}" ]; then
   }
 fi
 
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+node_version_ok() {
+  command -v node >/dev/null 2>&1 &&
+    command -v npm >/dev/null 2>&1 &&
+    node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 19) ? 0 : 1)' >/dev/null 2>&1
+}
+
+if ! node_version_ok; then
   try_module_load nodejs node node/20 nodejs/20 node/22 nodejs/22 npm || true
 fi
 
@@ -117,7 +123,7 @@ select_python_bin() {
 select_python_bin
 
 install_local_node() {
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  if node_version_ok; then
     return 0
   fi
 
@@ -138,8 +144,11 @@ install_local_node() {
   local download_dir="$WORK_ROOT/downloads"
   mkdir -p "$download_dir"
 
-  if [ ! -x "$NODE_INSTALL_DIR/bin/node" ]; then
-    echo "Node.js not found; installing local Node.js ${NODE_VERSION} into $NODE_INSTALL_DIR"
+  if ! node_version_ok || [ ! -x "$NODE_INSTALL_DIR/bin/node" ]; then
+    if command -v node >/dev/null 2>&1; then
+      echo "Existing Node.js is too old for OpenClaw: $(node --version)"
+    fi
+    echo "Installing local Node.js ${NODE_VERSION} into $NODE_INSTALL_DIR"
     if command -v curl >/dev/null 2>&1; then
       curl -fL "$url" -o "$download_dir/$tarball"
     elif command -v wget >/dev/null 2>&1; then
@@ -157,6 +166,7 @@ install_local_node() {
   fi
 
   export PATH="$NODE_INSTALL_DIR/bin:$PATH"
+  node_version_ok
 }
 
 install_local_node
@@ -202,8 +212,8 @@ echo
 
 echo "== Tool versions =="
 "$PYTHON_BIN" --version
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  echo "ERROR: node/npm not found."
+if ! node_version_ok; then
+  echo "ERROR: Node.js 22.19+ with npm is required."
   echo "The script tried environment modules and local Node.js installation."
   echo "Try checking available modules on the login node with:"
   echo "  module avail node"
