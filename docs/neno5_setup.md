@@ -47,15 +47,21 @@ bash scripts/neno5_login_node_check.sh
 
 Do not start SGLang on the login node. Use the SLURM job script below.
 
-## 3. Easiest Path: Submit The SLURM Setup + Benchmark Job
+## 3. Recommended Path: Two SLURM Jobs
 
 From the repository root:
 
-On NCHC nano5/neno5 you may need to pass the project account and a valid `dev`
-time limit. For the project shown by SLURM as `MST114180`, use:
+On NCHC nano5/neno5 you may need to pass the project account. For the project
+shown by SLURM as `MST114180`, first submit the one-time setup job:
 
 ```bash
-sbatch --account=MST114180 --time=01:00:00 scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 scripts/slurm_setup_env.sh
+```
+
+After setup succeeds, submit the benchmark-only job:
+
+```bash
+sbatch --account=MST114180 scripts/slurm_run_benchmark.sh
 ```
 
 Check your job:
@@ -71,7 +77,7 @@ ls -lh slurm-*-openclaw-sglang.out
 tail -n 120 slurm-*-openclaw-sglang.out
 ```
 
-The job will:
+The setup job will:
 
 - install or update a local Node.js 22 runtime under
   `/work/$USER/openclaw-sglang/node` if no compatible cluster Node module is
@@ -81,6 +87,10 @@ The job will:
 - install OpenClaw under `/work/$USER/openclaw-sglang/npm`
 - install pinned SGLang under `/work/$USER/openclaw-sglang/runtime/.venv`
   and rebuild the venv if a different SGLang version is already present
+- verify PyTorch can see CUDA from the SGLang virtual environment
+
+The benchmark job will:
+
 - start SGLang on `127.0.0.1:30000`
 - enable RadixAttention prefix cache by not passing `--disable-radix-cache`
 - enable request/KV cache logging
@@ -90,10 +100,18 @@ The job will:
 - run the R1/R2/R3 benchmark
 - write results under `benchmark_results/neno5_<jobid>/`
 
+The original all-in-one job is still available when you want setup and benchmark
+in a single allocation:
+
+```bash
+sbatch --account=MST114180 --time=01:00:00 scripts/slurm_setup_and_benchmark.sh
+```
+
 If the site requires a different partition or account:
 
 ```bash
-sbatch -p <partition> -A <account> --time=01:00:00 scripts/slurm_setup_and_benchmark.sh
+sbatch -p <partition> -A <account> scripts/slurm_setup_env.sh
+sbatch -p <partition> -A <account> scripts/slurm_run_benchmark.sh
 ```
 
 The default script uses:
@@ -101,7 +119,8 @@ The default script uses:
 ```text
 partition: dev
 gpu: 1
-time: 1 hour
+setup time: 1 hour
+benchmark time: 20 minutes
 memory: 64 GB
 ```
 
@@ -115,7 +134,7 @@ module avail node
 Then submit with the matching module name:
 
 ```bash
-sbatch --account=MST114180 --time=01:00:00 --export=ALL,NODE_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 --export=ALL,NODE_MODULE=<module-name> scripts/slurm_setup_env.sh
 ```
 
 If the job sees an old compute-node Python such as Python 3.6, check Python
@@ -128,7 +147,7 @@ module avail python
 Then submit with the matching module name:
 
 ```bash
-sbatch --account=MST114180 --time=01:00:00 --export=ALL,PYTHON_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 --export=ALL,PYTHON_MODULE=<module-name> scripts/slurm_setup_env.sh
 ```
 
 ## 4. Manual Setup: Install Basic Tools

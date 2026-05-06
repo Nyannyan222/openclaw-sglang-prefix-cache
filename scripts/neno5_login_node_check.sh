@@ -24,5 +24,6 @@ command -v sbatch && sbatch --version || true
 echo
 
 echo "== Recommended next command =="
-echo "sbatch scripts/slurm_setup_and_benchmark.sh"
-
+echo "sbatch --account=<project_id> scripts/slurm_setup_env.sh"
+echo "After setup succeeds:"
+echo "sbatch --account=<project_id> scripts/slurm_run_benchmark.sh"

@@ -35,6 +35,15 @@ NODE_VERSION="${NODE_VERSION:-v22.19.0}"
 OPENCLAW_PACKAGE="${OPENCLAW_PACKAGE:-openclaw@latest}"
 SGLANG_PACKAGE="${SGLANG_PACKAGE:-sglang==0.5.9}"
 RESET_VENV="${RESET_VENV:-0}"
+MODE="${MODE:-all}"
+
+case "$MODE" in
+  all|setup|run) ;;
+  *)
+    echo "ERROR: MODE must be one of: all, setup, run"
+    exit 1
+    ;;
+esac
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$UV_BIN_DIR" "$UV_CACHE_DIR" "$RESULT_DIR"
 
@@ -174,7 +183,19 @@ install_local_node() {
   node_version_ok
 }
 
-install_local_node
+ensure_node() {
+  if node_version_ok; then
+    return 0
+  fi
+  if [ "$MODE" = "run" ]; then
+    echo "ERROR: Node.js 22.19+ is not ready. Run setup first:"
+    echo "  sbatch --account=<project_id> scripts/slurm_setup_env.sh"
+    exit 1
+  fi
+  install_local_node
+}
+
+ensure_node
 
 install_uv() {
   if command -v uv >/dev/null 2>&1; then
@@ -273,6 +294,7 @@ echo "WORK_ROOT=$WORK_ROOT"
 echo "MODEL_ID=$MODEL_ID"
 echo "OPENCLAW_PACKAGE=$OPENCLAW_PACKAGE"
 echo "SGLANG_PACKAGE=$SGLANG_PACKAGE"
+echo "MODE=$MODE"
 echo
 
 echo "== GPU =="
@@ -299,18 +321,41 @@ npm --version
 echo
 
 echo "== Install uv if needed =="
-install_uv
+if [ "$MODE" = "run" ]; then
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "ERROR: uv is not ready. Run setup first:"
+    echo "  sbatch --account=<project_id> scripts/slurm_setup_env.sh"
+    exit 1
+  fi
+else
+  install_uv
+fi
 uv --version
 echo
 
 echo "== Install OpenClaw if needed =="
-install_openclaw
+if [ "$MODE" = "run" ]; then
+  if ! command -v openclaw >/dev/null 2>&1 || ! openclaw --version >/dev/null 2>&1; then
+    echo "ERROR: OpenClaw is not ready. Run setup first:"
+    echo "  sbatch --account=<project_id> scripts/slurm_setup_env.sh"
+    exit 1
+  fi
+else
+  install_openclaw
+fi
 openclaw --version
 echo
 
 echo "== Create/update SGLang venv =="
 cd "$RUNTIME_DIR"
-if venv_needs_recreate; then
+if [ "$MODE" = "run" ]; then
+  if venv_needs_recreate || ! installed_sglang_matches; then
+    echo "ERROR: SGLang runtime is not ready or does not match $SGLANG_PACKAGE."
+    echo "Run setup first:"
+    echo "  sbatch --account=<project_id> scripts/slurm_setup_env.sh"
+    exit 1
+  fi
+elif venv_needs_recreate; then
   echo "Creating a fresh SGLang venv with $PYTHON_BIN"
   reset_sglang_venv
   uv venv --python "$PYTHON_BIN" .venv
@@ -320,7 +365,9 @@ elif ! installed_sglang_matches; then
   uv venv --python "$PYTHON_BIN" .venv
 fi
 source .venv/bin/activate
-uv pip install -U "$SGLANG_PACKAGE" hf_transfer
+if [ "$MODE" != "run" ]; then
+  uv pip install -U "$SGLANG_PACKAGE" hf_transfer
+fi
 python - <<'PY'
 import importlib.util
 import os
@@ -341,6 +388,14 @@ else:
     raise SystemExit("PyTorch cannot see CUDA inside the SGLang venv")
 PY
 echo
+
+if [ "$MODE" = "setup" ]; then
+  echo "== Setup complete =="
+  echo "Runtime root: $WORK_ROOT"
+  echo "Use this command for the benchmark:"
+  echo "  sbatch --account=<project_id> scripts/slurm_run_benchmark.sh"
+  exit 0
+fi
 
 cleanup() {
   if [ -n "${SGLANG_PID:-}" ] && kill -0 "$SGLANG_PID" >/dev/null 2>&1; then

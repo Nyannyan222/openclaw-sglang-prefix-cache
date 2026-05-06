@@ -22,6 +22,12 @@ This repository contains the initial setup notes and benchmark artifacts for tes
 - `scripts/slurm_setup_and_benchmark.sh`  
   SLURM job that installs OpenClaw/SGLang on a compute node, starts SGLang with logging/metrics, configures OpenClaw, and runs the benchmark.
 
+- `scripts/slurm_setup_env.sh`
+  One-time setup job. It installs Node.js, OpenClaw, uv, and the pinned SGLang runtime under `/work/$USER/openclaw-sglang`.
+
+- `scripts/slurm_run_benchmark.sh`
+  Benchmark-only job. It reuses the setup runtime, starts SGLang, and runs R1/R2/R3.
+
 - `scripts/neno5_login_node_check.sh`  
   Lightweight login-node sanity check. It does not run SGLang or GPU workload.
 
@@ -64,7 +70,8 @@ On the login node:
 git clone https://github.com/Nyannyan222/openclaw-sglang-prefix-cache.git
 cd openclaw-sglang-prefix-cache
 bash scripts/neno5_login_node_check.sh
-sbatch --account=MST114180 --time=01:00:00 scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 scripts/slurm_setup_env.sh
+sbatch --account=MST114180 scripts/slurm_run_benchmark.sh
 ```
 
 Do not start SGLang directly on the login node. The SLURM script runs it inside
