@@ -2,17 +2,17 @@
 # Run OpenClaw + SGLang setup and the prefix-cache benchmark inside a SLURM GPU job.
 #
 # Submit from the repository root:
-#   sbatch scripts/slurm_setup_and_benchmark.sh
+#   sbatch --account=<project_id> scripts/slurm_setup_and_benchmark.sh
 #
 # If your site requires a different partition/account, override at submission:
-#   sbatch -p <partition> -A <account> scripts/slurm_setup_and_benchmark.sh
+#   sbatch -p <partition> -A <account> --time=00:30:00 scripts/slurm_setup_and_benchmark.sh
 
 #SBATCH --job-name=oc-sglang-cache
 #SBATCH --partition=dev
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=02:00:00
+#SBATCH --time=00:30:00
 #SBATCH --output=slurm-%j-openclaw-sglang.out
 
 set -euo pipefail
@@ -23,15 +23,17 @@ RUNTIME_DIR="$WORK_ROOT/runtime"
 LOG_DIR="$WORK_ROOT/logs"
 HF_HOME_DIR="$WORK_ROOT/huggingface"
 NPM_PREFIX="$WORK_ROOT/npm"
+NODE_INSTALL_DIR="$WORK_ROOT/node"
 SGLANG_LOG="$LOG_DIR/sglang_openclaw_${SLURM_JOB_ID:-manual}.log"
 RESULT_DIR="$PROJECT_ROOT/benchmark_results/neno5_${SLURM_JOB_ID:-manual}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}"
 SGLANG_PORT="${SGLANG_PORT:-30000}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+NODE_VERSION="${NODE_VERSION:-v20.19.0}"
 
-mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$RESULT_DIR"
+mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$HF_HOME_DIR" "$NPM_PREFIX" "$NODE_INSTALL_DIR" "$RESULT_DIR"
 
-export PATH="$NPM_PREFIX/bin:$HOME/.local/bin:$PATH"
+export PATH="$NODE_INSTALL_DIR/bin:$NPM_PREFIX/bin:$HOME/.local/bin:$PATH"
 export HF_HOME="$HF_HOME_DIR"
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
@@ -62,6 +64,51 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   try_module_load nodejs node node/20 nodejs/20 node/22 nodejs/22 npm || true
 fi
 
+install_local_node() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local arch
+  local node_arch
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64) node_arch="linux-x64" ;;
+    aarch64|arm64) node_arch="linux-arm64" ;;
+    *)
+      echo "ERROR: unsupported architecture for automatic Node.js install: $arch"
+      return 1
+      ;;
+  esac
+
+  local tarball="node-${NODE_VERSION}-${node_arch}.tar.xz"
+  local url="https://nodejs.org/dist/${NODE_VERSION}/${tarball}"
+  local download_dir="$WORK_ROOT/downloads"
+  mkdir -p "$download_dir"
+
+  if [ ! -x "$NODE_INSTALL_DIR/bin/node" ]; then
+    echo "Node.js not found; installing local Node.js ${NODE_VERSION} into $NODE_INSTALL_DIR"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fL "$url" -o "$download_dir/$tarball"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -O "$download_dir/$tarball" "$url"
+    else
+      echo "ERROR: neither curl nor wget is available to download Node.js."
+      return 1
+    fi
+
+    rm -rf "$NODE_INSTALL_DIR.tmp"
+    mkdir -p "$NODE_INSTALL_DIR.tmp"
+    tar -xJf "$download_dir/$tarball" -C "$NODE_INSTALL_DIR.tmp" --strip-components=1
+    rm -rf "$NODE_INSTALL_DIR"
+    mv "$NODE_INSTALL_DIR.tmp" "$NODE_INSTALL_DIR"
+  fi
+
+  export PATH="$NODE_INSTALL_DIR/bin:$PATH"
+}
+
+install_local_node
+
 echo "== Job context =="
 date
 hostname
@@ -80,6 +127,7 @@ echo "== Tool versions =="
 "$PYTHON_BIN" --version
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   echo "ERROR: node/npm not found."
+  echo "The script tried environment modules and local Node.js installation."
   echo "Try checking available modules on the login node with:"
   echo "  module avail node"
   echo "Then submit with, for example:"

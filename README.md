@@ -64,7 +64,9 @@ On the login node:
 git clone https://github.com/Nyannyan222/openclaw-sglang-prefix-cache.git
 cd openclaw-sglang-prefix-cache
 bash scripts/neno5_login_node_check.sh
-sbatch scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 --time=00:30:00 scripts/slurm_setup_and_benchmark.sh
 ```
 
-Do not start SGLang directly on the login node. The SLURM script runs it inside a GPU job.
+Do not start SGLang directly on the login node. The SLURM script runs it inside
+a GPU job and installs a local Node.js runtime under `/work/$USER/openclaw-sglang/node`
+if the cluster does not provide `node`/`npm`.

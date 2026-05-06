@@ -51,8 +51,11 @@ Do not start SGLang on the login node. Use the SLURM job script below.
 
 From the repository root:
 
+On NCHC nano5/neno5 you may need to pass the project account and a valid `dev`
+time limit. For the project shown by SLURM as `MST114180`, use:
+
 ```bash
-sbatch scripts/slurm_setup_and_benchmark.sh
+sbatch --account=MST114180 --time=00:30:00 scripts/slurm_setup_and_benchmark.sh
 ```
 
 Check your job:
@@ -70,6 +73,8 @@ tail -n 120 slurm-*-openclaw-sglang.out
 
 The job will:
 
+- install a local Node.js runtime under `/work/$USER/openclaw-sglang/node` if
+  no cluster Node module is available
 - install OpenClaw under `/work/$USER/openclaw-sglang/npm`
 - install SGLang under `/work/$USER/openclaw-sglang/runtime/.venv`
 - start SGLang on `127.0.0.1:30000`
@@ -82,7 +87,7 @@ The job will:
 If the site requires a different partition or account:
 
 ```bash
-sbatch -p <partition> -A <account> scripts/slurm_setup_and_benchmark.sh
+sbatch -p <partition> -A <account> --time=00:30:00 scripts/slurm_setup_and_benchmark.sh
 ```
 
 The default script uses:
@@ -90,8 +95,21 @@ The default script uses:
 ```text
 partition: dev
 gpu: 1
-time: 2 hours
+time: 30 minutes
 memory: 64 GB
+```
+
+If downloading Node.js from the compute node is blocked, check cluster modules
+on the login node:
+
+```bash
+module avail node
+```
+
+Then submit with the matching module name:
+
+```bash
+sbatch --account=MST114180 --time=00:30:00 --export=ALL,NODE_MODULE=<module-name> scripts/slurm_setup_and_benchmark.sh
 ```
 
 ## 4. Manual Setup: Install Basic Tools
