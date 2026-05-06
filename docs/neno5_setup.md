@@ -119,6 +119,8 @@ The setup job will:
 - verify PyTorch can see CUDA from the SGLang virtual environment
 - load or detect a CUDA toolkit and set `CUDA_HOME`, because SGLang/Triton JIT
   kernels require `nvcc` at request time
+- load or verify a C++20-capable host compiler, because SGLang JIT kernels
+  include the standard `<version>` header
 
 The benchmark job will:
 
@@ -198,6 +200,19 @@ Then submit benchmark jobs with the matching module name:
 
 ```bash
 sbatch --account=MST114180 --export=ALL,CUDA_MODULE=<module-name> scripts/slurm_run_benchmark.sh
+```
+
+If the job reports that the C++ compiler is too old or cannot compile
+`#include <version>`, check compiler modules:
+
+```bash
+module avail gcc
+```
+
+Then submit with both CUDA and compiler modules:
+
+```bash
+sbatch --account=MST114180 --export=ALL,CUDA_MODULE=cuda/12.4,CXX_MODULE=<module-name> scripts/slurm_run_benchmark.sh
 ```
 
 ## 4. Manual Setup: Install Basic Tools

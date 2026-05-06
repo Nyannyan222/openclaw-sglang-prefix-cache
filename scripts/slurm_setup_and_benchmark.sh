@@ -90,6 +90,13 @@ if [ -n "${CUDA_MODULE:-}" ]; then
   }
 fi
 
+if [ -n "${CXX_MODULE:-}" ]; then
+  try_module_load "$CXX_MODULE" || {
+    echo "ERROR: requested CXX_MODULE=$CXX_MODULE could not be loaded."
+    exit 1
+  }
+fi
+
 node_version_ok() {
   command -v node >/dev/null 2>&1 &&
     command -v npm >/dev/null 2>&1 &&
@@ -303,6 +310,51 @@ ensure_cuda_home() {
   export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
 }
 
+cpp20_toolchain_ok() {
+  command -v nvcc >/dev/null 2>&1 || return 1
+  command -v "${CXX:-g++}" >/dev/null 2>&1 || return 1
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d "$WORK_ROOT/cxx20-check.XXXXXX")"
+  cat > "$tmp_dir/check.cu" <<'EOF'
+#include <version>
+int main() { return 0; }
+EOF
+  if nvcc -std=c++20 -ccbin "${CXX:-g++}" -c "$tmp_dir/check.cu" -o "$tmp_dir/check.o" >/dev/null 2>&1; then
+    rm -rf "$tmp_dir"
+    return 0
+  fi
+  echo "C++20 CUDA compile check failed. Compiler details:"
+  "${CXX:-g++}" --version | sed -n '1,3p' || true
+  nvcc -std=c++20 -ccbin "${CXX:-g++}" -c "$tmp_dir/check.cu" -o "$tmp_dir/check.o" || true
+  rm -rf "$tmp_dir"
+  return 1
+}
+
+ensure_cpp20_toolchain() {
+  if cpp20_toolchain_ok; then
+    return 0
+  fi
+
+  try_module_load gcc/13 gcc/12 gcc/11 gcc/10 gcc/9 gcc cuda-gcc/12 cuda-gcc/11 || true
+
+  if command -v g++ >/dev/null 2>&1; then
+    CXX="$(command -v g++)"
+    CC="$(command -v gcc || echo gcc)"
+    CUDAHOSTCXX="$CXX"
+    export CC CXX CUDAHOSTCXX
+  fi
+
+  if ! cpp20_toolchain_ok; then
+    echo "ERROR: CUDA JIT needs a C++20-capable host compiler with the <version> header."
+    echo "Try checking compiler modules on the login node:"
+    echo "  module avail gcc"
+    echo "Then run, for example:"
+    echo "  sbatch --account=<project_id> --export=ALL,CUDA_MODULE=cuda/12.4,CXX_MODULE=<module-name> scripts/slurm_run_benchmark.sh"
+    exit 1
+  fi
+}
+
 ensure_managed_python() {
   if python_has_headers "$PYTHON_BIN"; then
     echo "Selected Python has headers: $PYTHON_BIN"
@@ -491,6 +543,13 @@ echo "== Ensure CUDA toolkit for SGLang/Triton JIT =="
 ensure_cuda_home
 echo "CUDA_HOME=$CUDA_HOME"
 nvcc --version | sed -n '1,4p'
+echo
+
+echo "== Ensure C++20 compiler for SGLang JIT =="
+ensure_cpp20_toolchain
+echo "CC=${CC:-$(command -v gcc || echo unset)}"
+echo "CXX=${CXX:-$(command -v g++ || echo unset)}"
+"${CXX:-g++}" --version | sed -n '1,3p'
 echo
 
 echo "== Tool versions =="
