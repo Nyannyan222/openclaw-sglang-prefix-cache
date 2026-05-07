@@ -324,7 +324,8 @@ def build_subcontext_metadata_for_request(
         )
         rows.append(
             {
-                "request_id": req_spec["name"],
+                "request_id": req_spec["name"].split("_", 1)[0],
+                "request_name": req_spec["name"],
                 "subcontext_id": subcontext_id,
                 "char_start": char_start,
                 "char_end": char_end,
