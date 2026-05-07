@@ -6,9 +6,8 @@ The script sends:
   R2 = A + B + C + question2
   R3 = C + A + B + question3
 
-It records OpenAI-compatible response usage, Prometheus metric deltas, and,
-when the SGLang log file is readable, per-request cached token counts from the
-`request.finished` JSON log events.
+It records OpenAI-compatible response usage, Prometheus metric deltas, per-request
+cached token counts from SGLang logs, and sub-context span metadata for A/B/C.
 """
 
 from __future__ import annotations
@@ -170,6 +169,10 @@ def prompt_sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+def content_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def make_subcontexts(experiment_id: str) -> dict[str, str]:
     return {
         "A": f"""
@@ -237,13 +240,134 @@ def build_requests(experiment_id: str) -> list[dict[str, Any]]:
             {
                 "name": name,
                 "order": "+".join(order),
+                "order_compact": "".join(order),
+                "order_ids": order,
                 "question": question,
                 "prompt": prompt,
                 "prompt_chars": len(prompt),
                 "prompt_sha256": prompt_sha256(prompt),
+                "subcontexts": subcontexts,
             }
         )
     return rows
+
+
+def load_tokenizer(tokenizer_path: str) -> Any | None:
+    try:
+        from transformers import AutoTokenizer
+    except ImportError:
+        print("WARNING: transformers is not installed; sub-context token spans will be empty.")
+        return None
+    try:
+        return AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=False, use_fast=True)
+    except Exception as exc:
+        print(
+            f"WARNING: failed to load tokenizer '{tokenizer_path}': {exc}. "
+            "Sub-context token spans will be empty."
+        )
+        return None
+
+
+def prompt_token_offsets(tokenizer: Any | None, prompt: str) -> tuple[int | None, list[tuple[int, int]]]:
+    if tokenizer is None:
+        return None, []
+    try:
+        encoded = tokenizer(
+            prompt,
+            add_special_tokens=False,
+            return_offsets_mapping=True,
+        )
+    except Exception:
+        return None, []
+
+    input_ids = encoded.get("input_ids", [])
+    offsets = encoded.get("offset_mapping", [])
+    normalized_offsets: list[tuple[int, int]] = []
+    for offset in offsets:
+        if isinstance(offset, tuple):
+            normalized_offsets.append(offset)
+        else:
+            normalized_offsets.append(tuple(offset))
+    return len(input_ids), normalized_offsets
+
+
+def token_range_for_char_span(
+    offsets: list[tuple[int, int]], char_start: int, char_end: int
+) -> tuple[int | None, int | None, int | None]:
+    token_indices = [
+        idx
+        for idx, (tok_start, tok_end) in enumerate(offsets)
+        if tok_end > char_start and tok_start < char_end and tok_end > tok_start
+    ]
+    if not token_indices:
+        return None, None, None
+    token_start = token_indices[0]
+    token_end = token_indices[-1] + 1
+    return token_start, token_end, token_end - token_start
+
+
+def build_subcontext_metadata_for_request(
+    req_spec: dict[str, Any],
+    *,
+    tokenizer: Any | None,
+) -> list[dict[str, Any]]:
+    prompt = req_spec["prompt"]
+    tokenizer_prompt_tokens, offsets = prompt_token_offsets(tokenizer, prompt)
+    rows: list[dict[str, Any]] = []
+
+    for position, subcontext_id in enumerate(req_spec["order_ids"], start=1):
+        content = req_spec["subcontexts"][subcontext_id]
+        char_start = prompt.index(content)
+        char_end = char_start + len(content)
+        token_start, token_end, token_len = token_range_for_char_span(
+            offsets, char_start, char_end
+        )
+        rows.append(
+            {
+                "request_id": req_spec["name"],
+                "subcontext_id": subcontext_id,
+                "char_start": char_start,
+                "char_end": char_end,
+                "token_start": token_start,
+                "token_end": token_end,
+                "token_len": token_len,
+                "content_hash": content_sha256(content)[:16],
+                "order": req_spec["order_compact"],
+                "position": position,
+                "tokenizer_prompt_tokens": tokenizer_prompt_tokens,
+            }
+        )
+    return rows
+
+
+def request_cache_fields(row: dict[str, Any]) -> tuple[Any, Any, Any]:
+    prompt_tokens = row.get("log_prompt_tokens") or row.get("usage_prompt_tokens")
+    cached_tokens = row.get("log_cached_tokens")
+    if cached_tokens is None:
+        cached_tokens = row.get("metric_delta_cached_tokens_total")
+
+    cache_ratio = None
+    try:
+        if prompt_tokens is not None and float(prompt_tokens) > 0 and cached_tokens is not None:
+            cache_ratio = float(cached_tokens) / float(prompt_tokens)
+    except (TypeError, ValueError):
+        cache_ratio = None
+    return cached_tokens, prompt_tokens, cache_ratio
+
+
+def attach_request_cache_to_subcontexts(
+    subcontext_rows: list[dict[str, Any]], request_row: dict[str, Any]
+) -> list[dict[str, Any]]:
+    cached_tokens, prompt_tokens, cache_ratio = request_cache_fields(request_row)
+    return [
+        {
+            **subcontext_row,
+            "cached_tokens": cached_tokens,
+            "prompt_tokens": prompt_tokens,
+            "cache_ratio": cache_ratio,
+        }
+        for subcontext_row in subcontext_rows
+    ]
 
 
 def find_finished_log_event(log_file: str | None, request_id: str) -> dict[str, Any] | None:
@@ -381,6 +505,21 @@ def print_summary(rows: list[dict[str, Any]], json_path: pathlib.Path, csv_path:
         )
 
 
+def print_subcontext_summary(rows: list[dict[str, Any]], csv_path: pathlib.Path) -> None:
+    print("")
+    print(f"Sub-context metadata CSV: {csv_path}")
+    print("request, subcontext, order, char_span, token_span, token_len, cache_ratio")
+    for row in rows:
+        token_span = f"{row.get('token_start')}:{row.get('token_end')}"
+        char_span = f"{row.get('char_start')}:{row.get('char_end')}"
+        cache_ratio = row.get("cache_ratio")
+        cache_ratio_text = f"{cache_ratio:.4f}" if isinstance(cache_ratio, float) else str(cache_ratio)
+        print(
+            f"{row['request_id']}, {row['subcontext_id']}, {row['order']}, "
+            f"{char_span}, {token_span}, {row.get('token_len')}, {cache_ratio_text}"
+        )
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run R1/R2/R3 SGLang prefix-cache benchmark and write CSV/JSON."
@@ -388,6 +527,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--base-url", default="http://127.0.0.1:30000/v1")
     parser.add_argument("--metrics-url", default=None)
     parser.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
+    parser.add_argument(
+        "--tokenizer-path",
+        default=None,
+        help="Tokenizer path for sub-context token spans. Defaults to --model.",
+    )
     parser.add_argument("--api-key", default=os.environ.get("SGLANG_API_KEY"))
     parser.add_argument("--log-file", default="/tmp/sglang_openclaw.log")
     parser.add_argument("--output-dir", default="benchmark_results")
@@ -416,24 +560,34 @@ def main(argv: list[str]) -> int:
     stem = f"sglang_prefix_cache_{stamp}"
     json_path = output_dir / f"{stem}.json"
     csv_path = output_dir / f"{stem}.csv"
+    subcontext_csv_path = output_dir / f"{stem}_subcontexts.csv"
 
+    tokenizer_path = args.tokenizer_path or args.model
+    tokenizer = load_tokenizer(tokenizer_path)
     request_specs = build_requests(experiment_id)
     rows = []
+    subcontext_rows = []
     for req_spec in request_specs:
         print(f"Running {req_spec['name']} ({req_spec['order']})...")
-        rows.append(
-            run_one_request(
-                req_spec=req_spec,
-                chat_url=chat_url,
-                metrics_url=metrics_url,
-                model=args.model,
-                api_key=args.api_key,
-                timeout=args.timeout,
-                max_tokens=args.max_tokens,
-                temperature=args.temperature,
-                log_file=args.log_file,
-                sleep_after_request=args.sleep_after_request,
-            )
+        request_row = run_one_request(
+            req_spec=req_spec,
+            chat_url=chat_url,
+            metrics_url=metrics_url,
+            model=args.model,
+            api_key=args.api_key,
+            timeout=args.timeout,
+            max_tokens=args.max_tokens,
+            temperature=args.temperature,
+            log_file=args.log_file,
+            sleep_after_request=args.sleep_after_request,
+        )
+        rows.append(request_row)
+        request_subcontext_rows = build_subcontext_metadata_for_request(
+            req_spec,
+            tokenizer=tokenizer,
+        )
+        subcontext_rows.extend(
+            attach_request_cache_to_subcontexts(request_subcontext_rows, request_row)
         )
 
     payload = {
@@ -442,12 +596,17 @@ def main(argv: list[str]) -> int:
         "base_url": base_url,
         "metrics_url": metrics_url,
         "model": args.model,
+        "tokenizer_path": tokenizer_path,
+        "tokenizer_loaded": tokenizer is not None,
         "log_file": args.log_file,
         "requests": rows,
+        "subcontext_metadata": subcontext_rows,
     }
     write_json(json_path, payload)
     write_csv(csv_path, rows)
+    write_csv(subcontext_csv_path, subcontext_rows)
     print_summary(rows, json_path, csv_path)
+    print_subcontext_summary(subcontext_rows, subcontext_csv_path)
     return 0
 
 

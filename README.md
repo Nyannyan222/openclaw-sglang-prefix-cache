@@ -5,7 +5,7 @@ This repository contains the initial setup notes and benchmark artifacts for tes
 ## Contents
 
 - `bench_sglang_prefix_cache.py`  
-  Sends R1/R2/R3 prompts to SGLang and exports CSV/JSON benchmark results.
+  Sends R1/R2/R3 prompts to SGLang and exports request-level CSV/JSON results plus sub-context metadata for A/B/C spans.
 
 - `benchmark_results/`  
   Captured baseline CSV/JSON outputs.
@@ -64,6 +64,18 @@ python3 bench_sglang_prefix_cache.py \
   --timeout 180 \
   --max-tokens 64
 ```
+
+Each run writes three artifacts:
+
+```text
+sglang_prefix_cache_<timestamp>.csv
+sglang_prefix_cache_<timestamp>.json
+sglang_prefix_cache_<timestamp>_subcontexts.csv
+```
+
+The `_subcontexts.csv` file records `request_id`, `subcontext_id`,
+`char_start`, `char_end`, `token_start`, `token_end`, `token_len`,
+`content_hash`, `order`, `cached_tokens`, `prompt_tokens`, and `cache_ratio`.
 
 ## neno5/nano5 Quick Start
 
