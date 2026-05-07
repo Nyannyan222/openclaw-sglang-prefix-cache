@@ -408,10 +408,13 @@ def find_json_log_event(
         with path.open("r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
-                if not line.startswith("{") or request_id not in line:
+                if request_id not in line:
+                    continue
+                json_start = line.find("{")
+                if json_start < 0:
                     continue
                 try:
-                    event = json.loads(line)
+                    event = json.loads(line[json_start:])
                 except json.JSONDecodeError:
                     continue
                 if event.get("event") == event_name and event.get("rid") == request_id:

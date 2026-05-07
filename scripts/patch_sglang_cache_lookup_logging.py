@@ -9,8 +9,8 @@ The patch is intentionally small and guarded by:
 
     SGLANG_PREFIX_CACHE_DEBUG_LOG=1
 
-When enabled, SGLang logs JSON lines with event="cache_lookup" from
-schedule_policy.match_prefix_for_req().
+When enabled, SGLang logs JSON lines with event="cache_lookup" from the
+prefix lookup paths used by schedule_policy and schedule_batch.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import sys
 
 
 MARKER = "# OPENCLAW_PREFIX_CACHE_LOOKUP_LOGGING"
+SCHEDULE_BATCH_MARKER = "# OPENCLAW_PREFIX_CACHE_LOOKUP_LOGGING_SCHEDULE_BATCH"
 
 
 def find_schedule_policy_path() -> pathlib.Path:
@@ -45,6 +46,23 @@ def find_schedule_policy_path() -> pathlib.Path:
         if candidate.exists():
             return candidate
     raise RuntimeError("Could not locate sglang.srt.managers.schedule_policy")
+
+
+def find_module_path(module_name: str, relative_path: tuple[str, ...]) -> pathlib.Path:
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except Exception:
+        spec = None
+    if spec is not None and spec.origin is not None:
+        return pathlib.Path(spec.origin)
+
+    for entry in sys.path:
+        if not entry:
+            entry = "."
+        candidate = pathlib.Path(entry).joinpath(*relative_path)
+        if candidate.exists():
+            return candidate
+    raise RuntimeError(f"Could not locate {module_name}")
 
 
 def patch_text(text: str) -> tuple[str, bool]:
@@ -150,6 +168,98 @@ def _openclaw_log_prefix_cache_lookup(req, token_ids, match_result):
     return text, True
 
 
+def patch_schedule_batch_text(text: str) -> tuple[str, bool]:
+    if SCHEDULE_BATCH_MARKER in text:
+        return text, False
+
+    if "import json\n" not in text:
+        text = text.replace("import enum\n", "import enum\nimport json\n", 1)
+    if "import os\n" not in text:
+        text = text.replace("import json\n", "import json\nimport os\n", 1)
+
+    helper_anchor = "logger = logging.getLogger(__name__)\n"
+    if helper_anchor not in text:
+        raise RuntimeError("Could not find schedule_batch logger anchor")
+    helper = f'''
+
+{SCHEDULE_BATCH_MARKER}
+_PREFIX_CACHE_LOOKUP_DEBUG_LOG = (
+    os.environ.get("SGLANG_PREFIX_CACHE_DEBUG_LOG", "").lower()
+    in ("1", "true", "yes", "on")
+)
+
+
+def _openclaw_prefix_cache_node_id(node):
+    return None if node is None else hex(id(node))
+
+
+def _openclaw_log_prefix_cache_lookup(req, token_ids, match_result):
+    if not _PREFIX_CACHE_LOOKUP_DEBUG_LOG:
+        return
+
+    input_token_len = len(token_ids)
+    matched_prefix_len = len(match_result.device_indices)
+    uncached_tokens = max(input_token_len - matched_prefix_len, 0)
+    first_mismatch_token_position = (
+        matched_prefix_len if matched_prefix_len < input_token_len else None
+    )
+    payload = {{
+        "event": "cache_lookup",
+        "rid": getattr(req, "rid", None),
+        "input_token_len": input_token_len,
+        "matched_prefix_len": matched_prefix_len,
+        "matched_node_id": _openclaw_prefix_cache_node_id(
+            match_result.last_device_node
+        ),
+        "matched_host_node_id": _openclaw_prefix_cache_node_id(
+            match_result.last_host_node
+        ),
+        "cached_tokens": matched_prefix_len,
+        "uncached_tokens": uncached_tokens,
+        "first_mismatch_token_position": first_mismatch_token_position,
+        "host_hit_length": match_result.host_hit_length,
+        "cache_protected_len": len(match_result.device_indices),
+        "extra_key": repr(getattr(req, "extra_key", None)),
+    }}
+    logger.info(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+'''
+    text = text.replace(helper_anchor, helper_anchor + helper, 1)
+
+    call_anchor = """            self.cache_protected_len = len(self.prefix_indices)
+
+        if (
+"""
+    if call_anchor not in text:
+        raise RuntimeError("Could not find schedule_batch prefix assignment anchor")
+    text = text.replace(
+        call_anchor,
+        """            self.cache_protected_len = len(self.prefix_indices)
+            _openclaw_log_prefix_cache_lookup(self, token_ids, match_result)
+
+        if (
+""",
+        1,
+    )
+    return text, True
+
+
+def patch_file(target: pathlib.Path, patcher) -> bool:
+    original = target.read_text(encoding="utf-8")
+    patched, changed = patcher(original)
+    if not changed:
+        print(f"Already patched: {target}")
+        return False
+
+    compile(patched, str(target), "exec")
+    backup = target.with_suffix(target.suffix + ".openclaw-prefix-log.bak")
+    if not backup.exists():
+        backup.write_text(original, encoding="utf-8")
+    target.write_text(patched, encoding="utf-8")
+    print(f"Patched: {target}")
+    print(f"Backup:  {backup}")
+    return True
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -162,24 +272,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    target = find_schedule_policy_path()
-    original = target.read_text(encoding="utf-8")
-    patched, changed = patch_text(original)
-    if not changed:
-        print(f"Already patched: {target}")
-        return 0
-
-    compile(patched, str(target), "exec")
     if args.dry_run:
-        print(f"Patch validates: {target}")
+        policy_target = find_schedule_policy_path()
+        policy_patched, _ = patch_text(policy_target.read_text(encoding="utf-8"))
+        compile(policy_patched, str(policy_target), "exec")
+
+        batch_target = find_module_path(
+            "sglang.srt.managers.schedule_batch",
+            ("sglang", "srt", "managers", "schedule_batch.py"),
+        )
+        batch_patched, _ = patch_schedule_batch_text(
+            batch_target.read_text(encoding="utf-8")
+        )
+        compile(batch_patched, str(batch_target), "exec")
+        print(f"Patch validates: {policy_target}")
+        print(f"Patch validates: {batch_target}")
         return 0
 
-    backup = target.with_suffix(target.suffix + ".openclaw-prefix-log.bak")
-    if not backup.exists():
-        backup.write_text(original, encoding="utf-8")
-    target.write_text(patched, encoding="utf-8")
-    print(f"Patched: {target}")
-    print(f"Backup:  {backup}")
+    patch_file(find_schedule_policy_path(), patch_text)
+    patch_file(
+        find_module_path(
+            "sglang.srt.managers.schedule_batch",
+            ("sglang", "srt", "managers", "schedule_batch.py"),
+        ),
+        patch_schedule_batch_text,
+    )
     return 0
 
 
