@@ -16,6 +16,10 @@ This repository contains the initial setup notes and benchmark artifacts for tes
 - `docs/sglang_source_map.md`  
   Source map for the SGLang files involved in radix prefix-cache lookup and KV/cache logging.
 
+- `docs/subcontext_cache_prototype.md`
+  Prototype design for layering a metadata-driven `SubContextIndex` outside
+  SGLang's RadixAttention prefix cache.
+
 - `docs/neno5_setup.md`  
   Step-by-step instructions for reproducing the initial OpenClaw + SGLang runtime setup on `neno5`/`nano5`.
 
@@ -95,6 +99,20 @@ first_mismatch_token_position
 The main benchmark CSV/JSON copies those fields into columns prefixed with
 `lookup_`, for example `lookup_matched_prefix_len` and
 `lookup_first_mismatch_token_position`.
+
+## Sub-Context Index Prototype
+
+After running a benchmark, simulate segment-level reuse over the exported
+sub-context metadata:
+
+```bash
+python3 scripts/subcontext_cache_prototype.py \
+  benchmark_results/<run_dir>/sglang_prefix_cache_<timestamp>.json
+```
+
+This writes `subcontext_cache_prototype_<timestamp>.csv/json`. It does not
+modify SGLang or splice real KV cache blocks; it records which A/B/C spans
+would be hit by a `hash(sub-context) -> token_range, kv_block_refs` index.
 
 ## neno5/nano5 Quick Start
 
