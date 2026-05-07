@@ -59,6 +59,7 @@ export UV_CACHE_DIR
 export UV_PYTHON_INSTALL_DIR
 export SGLANG_ENABLE_JIT_DEEPGEMM="${SGLANG_ENABLE_JIT_DEEPGEMM:-false}"
 export SGLANG_JIT_DEEPGEMM_PRECOMPILE="${SGLANG_JIT_DEEPGEMM_PRECOMPILE:-false}"
+export SGLANG_PREFIX_CACHE_DEBUG_LOG="${SGLANG_PREFIX_CACHE_DEBUG_LOG:-1}"
 
 if [ -f /etc/profile.d/modules.sh ]; then
   # Many HPC systems expose Node/Python/CUDA through environment modules.
@@ -660,6 +661,11 @@ else:
 PY
 echo
 
+echo "== Patch SGLang cache lookup logging =="
+python "$PROJECT_ROOT/scripts/patch_sglang_cache_lookup_logging.py"
+echo "SGLANG_PREFIX_CACHE_DEBUG_LOG=$SGLANG_PREFIX_CACHE_DEBUG_LOG"
+echo
+
 if [ "$MODE" = "setup" ]; then
   echo "== Setup complete =="
   echo "Runtime root: $WORK_ROOT"
@@ -782,4 +788,4 @@ echo "Benchmark results: $RESULT_DIR"
 find "$RESULT_DIR" -maxdepth 1 -type f -print
 echo
 echo "== Cache log sample =="
-grep -E "#cached-token|cached_tokens|request.finished" "$SGLANG_LOG" | tail -n 40 || true
+grep -E "#cached-token|cached_tokens|request.finished|cache_lookup" "$SGLANG_LOG" | tail -n 60 || true

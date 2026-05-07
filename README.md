@@ -77,6 +77,25 @@ The `_subcontexts.csv` file records `request_id`, `subcontext_id`,
 `char_start`, `char_end`, `token_start`, `token_end`, `token_len`,
 `content_hash`, `order`, `cached_tokens`, `prompt_tokens`, and `cache_ratio`.
 
+The SLURM workflow also patches SGLang with cache lookup logging. When
+`SGLANG_PREFIX_CACHE_DEBUG_LOG=1` is set, the SGLang log includes JSON lines
+with:
+
+```text
+event=cache_lookup
+rid
+input_token_len
+matched_prefix_len
+matched_node_id
+cached_tokens
+uncached_tokens
+first_mismatch_token_position
+```
+
+The main benchmark CSV/JSON copies those fields into columns prefixed with
+`lookup_`, for example `lookup_matched_prefix_len` and
+`lookup_first_mismatch_token_position`.
+
 ## neno5/nano5 Quick Start
 
 On the login node:

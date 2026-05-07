@@ -394,7 +394,9 @@ def attach_request_cache_to_subcontexts(
     ]
 
 
-def find_finished_log_event(log_file: str | None, request_id: str) -> dict[str, Any] | None:
+def find_json_log_event(
+    log_file: str | None, request_id: str, event_name: str
+) -> dict[str, Any] | None:
     if not log_file:
         return None
     path = pathlib.Path(log_file)
@@ -412,11 +414,19 @@ def find_finished_log_event(log_file: str | None, request_id: str) -> dict[str, 
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if event.get("event") == "request.finished" and event.get("rid") == request_id:
+                if event.get("event") == event_name and event.get("rid") == request_id:
                     found = event
     except OSError:
         return None
     return found
+
+
+def find_finished_log_event(log_file: str | None, request_id: str) -> dict[str, Any] | None:
+    return find_json_log_event(log_file, request_id, "request.finished")
+
+
+def find_cache_lookup_log_event(log_file: str | None, request_id: str) -> dict[str, Any] | None:
+    return find_json_log_event(log_file, request_id, "cache_lookup")
 
 
 def run_one_request(
@@ -451,6 +461,7 @@ def run_one_request(
 
     request_id = response.get("id", "")
     log_event = find_finished_log_event(log_file, request_id)
+    cache_lookup_event = find_cache_lookup_log_event(log_file, request_id)
     meta_info = safe_get(log_event or {}, ["out", "meta_info"], {})
     usage = response.get("usage") or {}
 
@@ -472,6 +483,20 @@ def run_one_request(
         "log_e2e_latency": meta_info.get("e2e_latency"),
         "log_prefill_launch_latency": meta_info.get("prefill_launch_latency"),
         "log_queue_time": meta_info.get("queue_time"),
+        "lookup_input_token_len": safe_get(cache_lookup_event or {}, ["input_token_len"]),
+        "lookup_matched_prefix_len": safe_get(
+            cache_lookup_event or {}, ["matched_prefix_len"]
+        ),
+        "lookup_matched_node_id": safe_get(cache_lookup_event or {}, ["matched_node_id"]),
+        "lookup_cached_tokens": safe_get(cache_lookup_event or {}, ["cached_tokens"]),
+        "lookup_uncached_tokens": safe_get(cache_lookup_event or {}, ["uncached_tokens"]),
+        "lookup_first_mismatch_token_position": safe_get(
+            cache_lookup_event or {}, ["first_mismatch_token_position"]
+        ),
+        "lookup_host_hit_length": safe_get(cache_lookup_event or {}, ["host_hit_length"]),
+        "lookup_cache_protected_len": safe_get(
+            cache_lookup_event or {}, ["cache_protected_len"]
+        ),
     }
 
     for metric_name in METRICS_OF_INTEREST:
@@ -486,6 +511,7 @@ def run_one_request(
 
     row["_raw_response"] = response
     row["_raw_log_event"] = log_event
+    row["_raw_cache_lookup_event"] = cache_lookup_event
     return row
 
 
@@ -519,13 +545,17 @@ def print_summary(rows: list[dict[str, Any]], json_path: pathlib.Path, csv_path:
     print("")
     print(
         "request, order, prompt_tokens, cached_tokens(log), "
-        "cached_tokens_delta(metrics), latency_s"
+        "cached_tokens_delta(metrics), lookup_matched_prefix_len, "
+        "lookup_first_mismatch, latency_s"
     )
     for row in rows:
         print(
             f"{row['request_name']}, {row['subcontext_order']}, "
             f"{row.get('usage_prompt_tokens')}, {row.get('log_cached_tokens')}, "
-            f"{row.get('metric_delta_cached_tokens_total')}, {row.get('latency_s')}"
+            f"{row.get('metric_delta_cached_tokens_total')}, "
+            f"{row.get('lookup_matched_prefix_len')}, "
+            f"{row.get('lookup_first_mismatch_token_position')}, "
+            f"{row.get('latency_s')}"
         )
 
 
