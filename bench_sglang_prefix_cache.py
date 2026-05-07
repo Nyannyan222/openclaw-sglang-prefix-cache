@@ -253,6 +253,22 @@ def build_requests(experiment_id: str) -> list[dict[str, Any]]:
 
 
 def load_tokenizer(tokenizer_path: str) -> Any | None:
+    tokenizer_file = pathlib.Path(tokenizer_path)
+    if tokenizer_file.is_file():
+        try:
+            from tokenizers import Tokenizer
+        except ImportError:
+            print("WARNING: tokenizers is not installed; sub-context token spans will be empty.")
+            return None
+        try:
+            return Tokenizer.from_file(str(tokenizer_file))
+        except Exception as exc:
+            print(
+                f"WARNING: failed to load tokenizer file '{tokenizer_path}': {exc}. "
+                "Sub-context token spans will be empty."
+            )
+            return None
+
     try:
         from transformers import AutoTokenizer
     except ImportError:
@@ -271,6 +287,13 @@ def load_tokenizer(tokenizer_path: str) -> Any | None:
 def prompt_token_offsets(tokenizer: Any | None, prompt: str) -> tuple[int | None, list[tuple[int, int]]]:
     if tokenizer is None:
         return None, []
+    if hasattr(tokenizer, "encode") and tokenizer.__class__.__module__.startswith("tokenizers"):
+        try:
+            encoded = tokenizer.encode(prompt, add_special_tokens=False)
+        except Exception:
+            return None, []
+        return len(encoded.ids), list(encoded.offsets)
+
     try:
         encoded = tokenizer(
             prompt,
