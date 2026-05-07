@@ -110,14 +110,40 @@ def _openclaw_log_prefix_cache_lookup(req, token_ids, match_result):
         req.cache_protected_len = match_result.cache_protected_len
     return match_result
 """
-    if call_anchor not in text:
-        raise RuntimeError("Could not find match_prefix_for_req return anchor")
-    text = text.replace(
-        call_anchor,
-        """    if match_result.cache_protected_len is not None:
+    if call_anchor in text:
+        text = text.replace(
+            call_anchor,
+            """    if match_result.cache_protected_len is not None:
         req.cache_protected_len = match_result.cache_protected_len
     _openclaw_log_prefix_cache_lookup(req, token_ids, match_result)
     return match_result
+""",
+            1,
+        )
+        return text, True
+
+    method_anchor = """            ) = (
+                match_result.device_indices,
+                match_result.last_device_node,
+                match_result.last_host_node,
+                match_result.host_hit_length,
+            )
+
+            # NOTE(sang): This logic is for in-batch prefix caching;
+"""
+    if method_anchor not in text:
+        raise RuntimeError("Could not find prefix-match assignment anchor")
+    text = text.replace(
+        method_anchor,
+        """            ) = (
+                match_result.device_indices,
+                match_result.last_device_node,
+                match_result.last_host_node,
+                match_result.host_hit_length,
+            )
+            _openclaw_log_prefix_cache_lookup(r, prefix_ids, match_result)
+
+            # NOTE(sang): This logic is for in-batch prefix caching;
 """,
         1,
     )
