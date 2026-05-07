@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Benchmark SGLang RadixAttention prefix-cache behavior for R1/R2/R3 prompts.
+"""Benchmark SGLang RadixAttention prefix-cache behavior for R1-R5 prompts.
 
 The script sends:
   R1 = A + B + C + question1
   R2 = A + B + C + question2
   R3 = C + A + B + question3
+  R4 = B + C + A + question4
+  R5 = A + C + B + question5
 
 It records OpenAI-compatible response usage, Prometheus metric deltas, per-request
 cached token counts from SGLang logs, and sub-context span metadata for A/B/C.
@@ -232,6 +234,16 @@ def build_requests(experiment_id: str) -> list[dict[str, Any]]:
             ["C", "A", "B"],
             "Which product best fits an always-on automation node, and why?",
         ),
+        (
+            "R4_BCA_reordered",
+            ["B", "C", "A"],
+            "Which product should a small research lab buy first, and why?",
+        ),
+        (
+            "R5_ACB_reordered",
+            ["A", "C", "B"],
+            "Which product is the weakest fit for shared model serving, and why?",
+        ),
     ]
     rows = []
     for name, order, question in specs:
@@ -379,6 +391,28 @@ def request_cache_fields(row: dict[str, Any]) -> tuple[Any, Any, Any]:
     return cached_tokens, prompt_tokens, cache_ratio
 
 
+def compute_request_cache_metrics(row: dict[str, Any]) -> dict[str, Any]:
+    cached_tokens, prompt_tokens, cache_ratio = request_cache_fields(row)
+
+    prefill_tokens = None
+    try:
+        if prompt_tokens is not None and cached_tokens is not None:
+            prefill_tokens = max(int(prompt_tokens) - int(cached_tokens), 0)
+    except (TypeError, ValueError):
+        prefill_tokens = None
+
+    first_token_latency_s = row.get("log_time_to_prefill_finished_s")
+    if first_token_latency_s is None:
+        first_token_latency_s = row.get("log_prefill_launch_latency")
+
+    return {
+        "cached_token_ratio": cache_ratio,
+        "prefill_tokens_est": prefill_tokens,
+        "first_token_latency_s": first_token_latency_s,
+        "total_latency_s": row.get("log_e2e_latency") or row.get("latency_s"),
+    }
+
+
 def attach_request_cache_to_subcontexts(
     subcontext_rows: list[dict[str, Any]], request_row: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -467,6 +501,14 @@ def run_one_request(
     cache_lookup_event = find_cache_lookup_log_event(log_file, request_id)
     meta_info = safe_get(log_event or {}, ["out", "meta_info"], {})
     usage = response.get("usage") or {}
+    time_to_prefill_finished_s = None
+    try:
+        received_ts = meta_info.get("request_received_ts")
+        prefill_finished_ts = meta_info.get("prefill_finished_ts")
+        if received_ts is not None and prefill_finished_ts is not None:
+            time_to_prefill_finished_s = float(prefill_finished_ts) - float(received_ts)
+    except (TypeError, ValueError):
+        time_to_prefill_finished_s = None
 
     row: dict[str, Any] = {
         "request_name": req_spec["name"],
@@ -485,6 +527,7 @@ def run_one_request(
         "log_cached_tokens": meta_info.get("cached_tokens"),
         "log_e2e_latency": meta_info.get("e2e_latency"),
         "log_prefill_launch_latency": meta_info.get("prefill_launch_latency"),
+        "log_time_to_prefill_finished_s": time_to_prefill_finished_s,
         "log_queue_time": meta_info.get("queue_time"),
         "lookup_input_token_len": safe_get(cache_lookup_event or {}, ["input_token_len"]),
         "lookup_matched_prefix_len": safe_get(
@@ -501,6 +544,7 @@ def run_one_request(
             cache_lookup_event or {}, ["cache_protected_len"]
         ),
     }
+    row.update(compute_request_cache_metrics(row))
 
     for metric_name in METRICS_OF_INTEREST:
         short_name = metric_name.replace("sglang:", "").replace("-", "_")
@@ -548,17 +592,18 @@ def print_summary(rows: list[dict[str, Any]], json_path: pathlib.Path, csv_path:
     print("")
     print(
         "request, order, prompt_tokens, cached_tokens(log), "
-        "cached_tokens_delta(metrics), lookup_matched_prefix_len, "
-        "lookup_first_mismatch, latency_s"
+        "cached_token_ratio, prefill_tokens_est, first_token_latency_s, "
+        "total_latency_s, lookup_matched_prefix_len"
     )
     for row in rows:
+        cache_ratio = row.get("cached_token_ratio")
+        cache_ratio_text = f"{cache_ratio:.4f}" if isinstance(cache_ratio, float) else str(cache_ratio)
         print(
             f"{row['request_name']}, {row['subcontext_order']}, "
             f"{row.get('usage_prompt_tokens')}, {row.get('log_cached_tokens')}, "
-            f"{row.get('metric_delta_cached_tokens_total')}, "
-            f"{row.get('lookup_matched_prefix_len')}, "
-            f"{row.get('lookup_first_mismatch_token_position')}, "
-            f"{row.get('latency_s')}"
+            f"{cache_ratio_text}, {row.get('prefill_tokens_est')}, "
+            f"{row.get('first_token_latency_s')}, {row.get('total_latency_s')}, "
+            f"{row.get('lookup_matched_prefix_len')}"
         )
 
 
@@ -579,7 +624,7 @@ def print_subcontext_summary(rows: list[dict[str, Any]], csv_path: pathlib.Path)
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run R1/R2/R3 SGLang prefix-cache benchmark and write CSV/JSON."
+        description="Run R1-R5 SGLang prefix-cache benchmark and write CSV/JSON."
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:30000/v1")
     parser.add_argument("--metrics-url", default=None)

@@ -161,20 +161,36 @@ def simulate(payload: dict[str, Any], block_size: int) -> tuple[list[LookupDecis
         total_tokens = sum(item.token_len for item in request_decisions)
         reusable_tokens = sum(item.reusable_tokens for item in request_decisions)
         prefill_tokens = sum(item.prefill_tokens for item in request_decisions)
+        prompt_tokens = req_row.get("log_prompt_tokens") or req_row.get("usage_prompt_tokens")
         sglang_matched = req_row.get("lookup_matched_prefix_len")
         sglang_subcontext_overlap = (
             min(int(sglang_matched), total_tokens)
             if sglang_matched not in (None, "")
             else None
         )
+        proposed_cached_token_ratio = None
+        proposed_prefill_tokens = None
+        try:
+            if prompt_tokens is not None and int(prompt_tokens) > 0:
+                proposed_cached_token_ratio = reusable_tokens / int(prompt_tokens)
+                proposed_prefill_tokens = max(int(prompt_tokens) - reusable_tokens, 0)
+        except (TypeError, ValueError):
+            proposed_cached_token_ratio = None
+            proposed_prefill_tokens = None
         summaries.append(
             {
                 "request_name": request_name,
                 "subcontext_order": req_row.get("subcontext_order"),
+                "prompt_tokens": prompt_tokens,
                 "subcontext_tokens": total_tokens,
                 "prototype_reusable_tokens": reusable_tokens,
                 "prototype_prefill_tokens": prefill_tokens,
                 "prototype_hit_ratio": reusable_tokens / total_tokens if total_tokens else None,
+                "cached_token_ratio": proposed_cached_token_ratio,
+                "prefill_tokens_est": proposed_prefill_tokens,
+                "first_token_latency_s": None,
+                "total_latency_s": None,
+                "latency_status": "not_measured_metadata_prototype",
                 "sglang_prefix_matched_tokens": sglang_matched,
                 "sglang_cached_tokens": req_row.get("log_cached_tokens"),
                 "estimated_sglang_subcontext_overlap_tokens": sglang_subcontext_overlap,
@@ -274,15 +290,17 @@ def main() -> int:
     print("")
     print(
         "request, order, subcontext_tokens, prototype_reusable_tokens, "
-        "prototype_hit_ratio, sglang_prefix_matched_tokens, extra_opportunity"
+        "cached_token_ratio, prefill_tokens_est, sglang_prefix_matched_tokens, "
+        "extra_opportunity"
     )
     for row in summaries:
-        hit_ratio = row["prototype_hit_ratio"]
-        hit_ratio_text = "" if hit_ratio is None else f"{hit_ratio:.4f}"
+        cache_ratio = row["cached_token_ratio"]
+        cache_ratio_text = "" if cache_ratio is None else f"{cache_ratio:.4f}"
         print(
             f"{row['request_name']}, {row['subcontext_order']}, "
             f"{row['subcontext_tokens']}, {row['prototype_reusable_tokens']}, "
-            f"{hit_ratio_text}, {row['sglang_prefix_matched_tokens']}, "
+            f"{cache_ratio_text}, {row['prefill_tokens_est']}, "
+            f"{row['sglang_prefix_matched_tokens']}, "
             f"{row['additional_reuse_opportunity_tokens']}"
         )
     return 0

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start a local WSL SGLang server for Qwen2.5-0.5B and run R1/R2/R3 benchmark.
+# Start a local WSL SGLang server for Qwen2.5-0.5B and run R1-R5 benchmark.
 
 set -euo pipefail
 
@@ -9,9 +9,10 @@ VENV_DIR="${VENV_DIR:-$RUNTIME_ROOT/.venv}"
 CUDA_TOOLKIT_DIR="${CUDA_TOOLKIT_DIR:-/home/chihjou/cuda-12.8-nvcc}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}"
 PORT="${SGLANG_PORT:-31080}"
+CACHE_MODE="${CACHE_MODE:-radix}"
 LOG_DIR="$RUNTIME_ROOT/logs"
-SGLANG_LOG="$LOG_DIR/sglang_qwen05_wsl.log"
-RESULT_DIR="$PROJECT_ROOT/benchmark_results/wsl_Qwen__Qwen2.5-0.5B-Instruct_$(date +%Y%m%d_%H%M%S)"
+SGLANG_LOG="$LOG_DIR/sglang_qwen05_wsl_${CACHE_MODE}.log"
+RESULT_DIR="$PROJECT_ROOT/benchmark_results/wsl_${CACHE_MODE}_Qwen__Qwen2.5-0.5B-Instruct_$(date +%Y%m%d_%H%M%S)"
 
 mkdir -p "$LOG_DIR" "$RESULT_DIR"
 
@@ -42,8 +43,22 @@ trap cleanup EXIT
 : > "$SGLANG_LOG"
 echo "Starting SGLang"
 echo "Model: $MODEL_ID"
+echo "Cache: $CACHE_MODE"
 echo "Port : $PORT"
 echo "Log  : $SGLANG_LOG"
+
+SERVER_CACHE_ARGS=(--radix-eviction-policy lru)
+case "$CACHE_MODE" in
+  no_cache)
+    SERVER_CACHE_ARGS+=(--disable-radix-cache)
+    ;;
+  radix)
+    ;;
+  *)
+    echo "Unsupported CACHE_MODE=$CACHE_MODE. Use no_cache or radix."
+    exit 2
+    ;;
+esac
 
 python -m sglang.launch_server \
   --model-path "$MODEL_ID" \
@@ -53,7 +68,7 @@ python -m sglang.launch_server \
   --log-requests \
   --log-requests-level 1 \
   --log-requests-format json \
-  --radix-eviction-policy lru \
+  "${SERVER_CACHE_ARGS[@]}" \
   --mem-fraction-static 0.35 \
   --attention-backend triton \
   --sampling-backend pytorch \

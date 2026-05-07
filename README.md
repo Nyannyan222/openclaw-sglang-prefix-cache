@@ -20,6 +20,10 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   Prototype design for layering a metadata-driven `SubContextIndex` outside
   SGLang's RadixAttention prefix cache.
 
+- `docs/single_vs_subcontext_experiment.md`
+  Experiment design for comparing No cache, native RadixAttention, and the
+  sub-context-aware prototype over R1-R5.
+
 - `docs/neno5_setup.md`  
   Step-by-step instructions for reproducing the initial OpenClaw + SGLang runtime setup on `neno5`/`nano5`.
 
@@ -113,6 +117,31 @@ python3 scripts/subcontext_cache_prototype.py \
 This writes `subcontext_cache_prototype_<timestamp>.csv/json`. It does not
 modify SGLang or splice real KV cache blocks; it records which A/B/C spans
 would be hit by a `hash(sub-context) -> token_range, kv_block_refs` index.
+
+## Single-Context vs Sub-Context Matrix
+
+Run the WSL comparison matrix:
+
+```bash
+bash scripts/wsl_run_cache_baseline_matrix.sh
+```
+
+It runs:
+
+```text
+Baseline_NoCache
+Baseline_RadixAttention
+Proposed_SubContextIndex
+```
+
+and exports the four comparison metrics:
+
+```text
+cached_token_ratio
+prefill_tokens
+first_token_latency_s
+total_latency_s
+```
 
 ## neno5/nano5 Quick Start
 
