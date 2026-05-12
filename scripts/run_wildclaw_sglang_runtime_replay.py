@@ -33,7 +33,11 @@ METRICS = (
     "sglang:new_token_ratio",
     "sglang:num_used_tokens",
     "sglang:time_to_first_token_seconds",
+    "sglang:time_to_first_token_seconds_sum",
+    "sglang:time_to_first_token_seconds_count",
     "sglang:e2e_request_latency_seconds",
+    "sglang:e2e_request_latency_seconds_sum",
+    "sglang:e2e_request_latency_seconds_count",
 )
 
 
