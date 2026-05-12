@@ -24,6 +24,56 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   Experiment design for comparing No cache, native RadixAttention, and the
   sub-context-aware prototype over R1-R5.
 
+- `docs/wildclaw_semantic_subcontext_pilot.md`
+  First-week plan for replacing synthetic A/B/C contexts with real
+  WildClawBench task workspaces and LLM semantic sub-context extraction.
+
+- `docs/wildclaw_retrieval_execution_report.md`
+  Report-ready summary of the Search Retrieval pilot after adding two-stage
+  retrieval/search execution and combining the tuned task 4 rerun.
+
+- `docs/wildclaw_phase2_roadmap.md`
+  Phase-2 roadmap for expanding categories, adding formal grading, replaying
+  through SGLang runtime, and preparing semantic sub-context KV reuse.
+
+- `scripts/real_context_extractor.py`
+  Builds leakage-checked long-context JSONL rows from WildClawBench task
+  prompts and workspace files.
+
+- `scripts/llm_semantic_segmenter.py`
+  Extracts LLM semantic sub-contexts and writes fixed-size/file-based
+  baselines plus a comparison CSV.
+
+- `scripts/wildclaw_candidate_evidence_extractor.py`
+  Builds V3 candidate-evidence contexts before LLM semantic segmentation.
+
+- `scripts/prepare_wildclaw_next_experiment.py`
+  Converts reviewed V3 outputs into a final pass-only dataset and a framework
+  evaluation manifest comparing fixed-size, file-based, candidate-evidence, and
+  V3 semantic sub-context policies.
+
+- `scripts/run_wildclaw_framework_eval.py`
+  Stages or runs the next-round WildClawBench framework-evaluation manifest,
+  writing per-condition prompts, answers, retrieval evidence, token estimates,
+  and result logs. The `openai-web` backend runs a two-stage retrieval/search
+  execution path: focused web retrieval first, final answer second.
+
+- `scripts/annotate_wildclaw_framework_eval.py`
+  Adds first-pass correctness/evidence labels to a framework-evaluation run and
+  writes a condition summary plus `run_summary_web.md`.
+
+- `scripts/combine_wildclaw_eval_rerun.py`
+  Replaces selected task rows from a base annotated run with a task-specific
+  rerun, then writes a combined 12-row report.
+
+- `scripts/prepare_wildclaw_phase2.py`
+  Creates the phase-2 task-selection manifest, grading rubric, manual grading
+  sheet, and SGLang runtime replay manifest.
+
+- `scripts/run_wildclaw_sglang_runtime_replay.py`
+  Replays WildClaw prompts through an SGLang OpenAI-compatible endpoint and
+  records cached-token, prefill-token estimate, and latency metrics.
+
 - `docs/neno5_setup.md`  
   Step-by-step instructions for reproducing the initial OpenClaw + SGLang runtime setup on `neno5`/`nano5`.
 
