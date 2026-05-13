@@ -83,9 +83,19 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   Generates runtime prompts and a semantic block manifest for measuring
   non-prefix KV reuse opportunity with reordered semantic sub-contexts.
 
+- `scripts/prepare_semantic_similarity_kv_reuse.py`
+  Finds semantically/content-similar sub-context pairs and builds a runtime
+  manifest for testing similarity detection, canonicalization, and exact-token
+  cache reuse opportunity.
+
 - `docs/runtime_nonprefix_kv_reuse_design.md`
   Runtime hook contract for moving from native prefix cache observation toward
   semantic non-prefix KV reuse inside SGLang.
+
+- `docs/runtime_semantic_similarity_kv_reuse_design.md`
+  Design note for the safer semantic/content-similarity direction: detect
+  similar blocks, canonicalize/substitute them, then reuse exact canonical
+  tokens instead of directly splicing token-different KV tensors.
 
 - `docs/neno5_setup.md`  
   Step-by-step instructions for reproducing the initial OpenClaw + SGLang runtime setup on `neno5`/`nano5`.
