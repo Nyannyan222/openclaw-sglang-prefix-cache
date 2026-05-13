@@ -166,7 +166,7 @@ ensure_cpp20_toolchain() {
     return 0
   fi
 
-  try_module_load gcc/13 gcc/12 gcc/11 gcc/10 gcc/9 gcc cuda-gcc/12 cuda-gcc/11 || true
+  try_module_load gcc/13 gcc/12.5.0 gcc/12 gcc/11.5.0 gcc/11 gcc/10.5.0 gcc/10 gcc/9 gcc cuda-gcc/12 cuda-gcc/11 || true
 
   if command -v g++ >/dev/null 2>&1; then
     CXX="$(command -v g++)"
