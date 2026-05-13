@@ -81,6 +81,65 @@ if [ -n "${CXX_MODULE:-}" ]; then
   }
 fi
 
+cuda_home_ok() {
+  [ -n "${CUDA_HOME:-}" ] &&
+    [ -d "$CUDA_HOME" ] &&
+    [ -d "$CUDA_HOME/lib64" ] &&
+    { [ -x "$CUDA_HOME/bin/nvcc" ] || command -v nvcc >/dev/null 2>&1; }
+}
+
+set_cuda_home_from_nvcc() {
+  if command -v nvcc >/dev/null 2>&1; then
+    CUDA_HOME="$(cd "$(dirname "$(command -v nvcc)")/.." && pwd)"
+    export CUDA_HOME
+  fi
+}
+
+set_cuda_home_from_candidates() {
+  local candidate
+  for candidate in \
+    /usr/local/cuda \
+    /usr/local/cuda-12.8 \
+    /usr/local/cuda-12.6 \
+    /usr/local/cuda-12.4 \
+    /opt/cuda \
+    /opt/cuda-12.8 \
+    /opt/cuda-12.6 \
+    /opt/cuda-12.4; do
+    if [ -d "$candidate" ]; then
+      CUDA_HOME="$candidate"
+      export CUDA_HOME
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_cuda_home() {
+  if cuda_home_ok; then
+    return 0
+  fi
+
+  try_module_load cuda/12.8 cuda/12.6 cuda/12.4 cuda/12 cuda cudatoolkit/12.8 cudatoolkit/12.6 cudatoolkit/12.4 cudatoolkit || true
+  set_cuda_home_from_nvcc
+  if ! cuda_home_ok; then
+    set_cuda_home_from_candidates || true
+  fi
+
+  if ! cuda_home_ok; then
+    echo "ERROR: CUDA toolkit was not found. SGLang JIT needs CUDA_HOME and nvcc."
+    echo "Try checking CUDA modules:"
+    echo "  module avail cuda"
+    echo "Then run, for example:"
+    echo "  sbatch --account=<project_id> --export=ALL,CUDA_MODULE=<module-name> scripts/slurm_run_wildclaw_runtime_replay.sh"
+    exit 1
+  fi
+
+  export PATH="$CUDA_HOME/bin:$PATH"
+  export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
+  export CUDACXX="${CUDACXX:-$CUDA_HOME/bin/nvcc}"
+}
+
 if [ ! -x "$RUNTIME_DIR/.venv/bin/python" ]; then
   echo "ERROR: SGLang runtime venv not found at $RUNTIME_DIR/.venv"
   echo "Run setup first:"
@@ -113,6 +172,12 @@ echo "Model:        $MODEL_ID"
 echo "Manifest:     $MANIFEST"
 echo "Limit:        $LIMIT"
 echo "Repeat:       $REPEAT"
+echo
+
+echo "== Ensure CUDA toolkit for SGLang JIT =="
+ensure_cuda_home
+echo "CUDA_HOME=$CUDA_HOME"
+nvcc --version | sed -n '1,4p'
 echo
 
 echo "== Start SGLang =="
