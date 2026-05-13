@@ -55,9 +55,14 @@ sbatch --account=MST114180 \
 Expected native SGLang behavior:
 
 - `canonical_context`: low cache on first use;
-- `similar_context`: low cache if token-different, even if similarity is high;
-- `canonical_context_repeat`: high cache because the exact canonical text repeats.
+- `similar_context`: only tiny fixed-marker cache if token-different, even if similarity is high;
+- `canonical_context_repeat`: high cache because the exact canonical text appears first and repeats.
 
 The gap between `similar_context` and `canonical_context_repeat` motivates a
 semantic similarity layer that canonicalizes or substitutes similar context
 before runtime, rather than unsafe approximate KV tensor reuse.
+
+The generated prompts are context-first by design. The first tokens are the
+candidate context block rather than a long shared instruction prefix, which makes
+`cached_tokens` easier to interpret as context reuse instead of prompt-template
+reuse.

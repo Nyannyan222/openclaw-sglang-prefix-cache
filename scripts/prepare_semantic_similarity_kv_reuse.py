@@ -173,18 +173,21 @@ def pair_rows(rows: list[dict[str, Any]], threshold: float, same_category_only: 
 
 
 def prompt_for(pair: dict[str, Any], variant: str, text: str) -> str:
+    # Put the evaluated text at the very beginning. This minimizes shared
+    # instruction-prefix cache hits so cached_tokens mostly reflect the context
+    # block itself.
     return "\n\n".join(
         [
-            "Answer using the context block below.",
-            "This prompt is part of a semantic/content-similarity KV reuse experiment.",
-            f"pair_id: {pair['pair_id']}",
-            f"variant: {variant}",
-            f"reuse_policy: {pair['reuse_policy']}",
-            f"combined_similarity: {pair['combined_similarity']:.4f}",
             "[CONTEXT_BLOCK]",
             text,
             "[/CONTEXT_BLOCK]",
-            "Return a concise answer and cite whether the context block is sufficient.",
+            (
+                "Task: Based only on the context block above, give a one-sentence "
+                "summary and say whether it is sufficient evidence. "
+                f"Metadata: pair={pair['pair_id']}; variant={variant}; "
+                f"similarity={pair['combined_similarity']:.4f}; "
+                f"reuse_policy={pair['reuse_policy']}."
+            ),
         ]
     )
 
