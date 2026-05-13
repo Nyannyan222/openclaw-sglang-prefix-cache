@@ -6,9 +6,10 @@ that semantically similar but token-different text can be safely spliced into
 SGLang's KV cache. It prepares the measurable opportunity:
 
 1. find similar sub-contexts by normalized content similarity,
-2. build prompts that compare canonical text, similar text, and canonical repeat,
+2. build prompts that compare canonical text, similar text, canonical+delta,
+   and canonical repeat,
 3. produce a manifest for native SGLang replay,
-4. document which pairs would require canonicalization or approximate reuse.
+4. document which pairs would require canonicalization or delta preservation.
 """
 
 from __future__ import annotations
@@ -121,6 +122,34 @@ def similarity(left: dict[str, Any], right: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def split_units(text: str) -> list[str]:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    rough_units = re.split(r"(?<=[.!?。！？；;])\s+|\n+", normalized)
+    units = [unit.strip() for unit in rough_units if unit.strip()]
+    if len(units) <= 1 and len(normalized) > 240:
+        units = [normalized[index : index + 220].strip() for index in range(0, len(normalized), 220)]
+    return [unit for unit in units if unit]
+
+
+def unit_similarity(left: str, right: str) -> float:
+    return similarity({"sub_context": left}, {"sub_context": right})["combined_similarity"]
+
+
+def extract_delta(canonical_text: str, similar_text: str, unit_threshold: float = 0.72) -> str:
+    canonical_units = split_units(canonical_text)
+    similar_units = split_units(similar_text)
+    delta_units = []
+    for unit in similar_units:
+        best = max((unit_similarity(unit, canon) for canon in canonical_units), default=0.0)
+        if best < unit_threshold:
+            delta_units.append(unit)
+    if delta_units:
+        return "\n".join(delta_units)
+    if normalize_text(canonical_text) != normalize_text(similar_text):
+        return similar_text
+    return "No task-specific delta beyond the canonical context."
+
+
 def pair_rows(rows: list[dict[str, Any]], threshold: float, same_category_only: bool) -> list[dict[str, Any]]:
     candidates = []
     usable = [row for row in rows if row.get("sub_context")]
@@ -192,45 +221,84 @@ def prompt_for(pair: dict[str, Any], variant: str, text: str) -> str:
     )
 
 
+def canonical_plus_delta_prompt(pair: dict[str, Any]) -> str:
+    canonical_text = pair["left_text"]
+    similar_text = pair["right_text"]
+    delta_text = pair["delta_text"]
+    return "\n\n".join(
+        [
+            "[CANONICAL_CONTEXT]",
+            canonical_text,
+            "[/CANONICAL_CONTEXT]",
+            "[TASK_SPECIFIC_DELTA]",
+            delta_text,
+            "[/TASK_SPECIFIC_DELTA]",
+            (
+                "Task: Use the canonical context as reusable evidence and apply "
+                "the task-specific delta to preserve details from the similar "
+                "context. Give a one-sentence summary and say whether the combined "
+                "context is sufficient evidence. "
+                f"Metadata: pair={pair['pair_id']}; variant=canonical_plus_delta; "
+                f"similarity={pair['combined_similarity']:.4f}; "
+                f"reuse_policy=semantic_canonicalization_with_delta."
+            ),
+        ]
+    )
+
+
 def build_runtime(rows: list[dict[str, Any]], output_dir: Path, max_pairs: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     prompt_dir = output_dir / "prompts"
     prompt_dir.mkdir(parents=True, exist_ok=True)
     runtime_rows: list[dict[str, Any]] = []
     block_rows: list[dict[str, Any]] = []
     for pair in rows[:max_pairs]:
+        pair["delta_text"] = extract_delta(pair["left_text"], pair["right_text"])
+        pair["delta_chars"] = len(pair["delta_text"])
+        pair["delta_hash"] = content_hash(pair["delta_text"])
         variants = {
             "canonical_context": pair["left_text"],
             "similar_context": pair["right_text"],
+            "canonical_plus_delta": None,
             "canonical_context_repeat": pair["left_text"],
         }
         for variant, text in variants.items():
-            prompt = prompt_for(pair, variant, text)
+            prompt = canonical_plus_delta_prompt(pair) if variant == "canonical_plus_delta" else prompt_for(pair, variant, text or "")
             prompt_path = prompt_dir / f"{pair['pair_id']}__{variant}.txt"
             prompt_path.write_text(prompt, encoding="utf-8")
+            kv_reuse_mode = (
+                "semantic_canonicalization_with_delta"
+                if variant == "canonical_plus_delta"
+                else pair["reuse_policy"]
+            )
             runtime_rows.append(
                 {
                     "id": f"{pair['pair_id']}::{variant}",
                     "task_id": f"{pair['left_task_id']}__vs__{pair['right_task_id']}",
                     "condition": variant,
                     "prompt_path": prompt_path.as_posix(),
-                    "kv_reuse_mode": pair["reuse_policy"],
+                    "kv_reuse_mode": kv_reuse_mode,
                     "similarity": round(pair["combined_similarity"], 6),
                     "notes": (
-                        "similar_context should not be treated as safe direct KV reuse unless "
+                        "canonical_plus_delta is the proposed method: reuse the exact canonical "
+                        "prefix and preserve task-specific differences as a delta."
+                        if variant == "canonical_plus_delta"
+                        else "similar_context should not be treated as safe direct KV reuse unless "
                         "the reuse_policy is safe_exact_kv_reuse or a canonicalization layer "
                         "makes the runtime text/token ids identical."
                     ),
                 }
             )
+            block_text = pair["left_text"] if variant == "canonical_plus_delta" else text or ""
             block_rows.append(
                 {
                     "runtime_row_id": f"{pair['pair_id']}::{variant}",
                     "pair_id": pair["pair_id"],
                     "variant": variant,
-                    "content_hash": content_hash(text),
-                    "normalized_hash": normalized_hash(text),
-                    "chars": len(text),
-                    "reuse_policy": pair["reuse_policy"],
+                    "content_hash": content_hash(block_text),
+                    "normalized_hash": normalized_hash(block_text),
+                    "chars": len(block_text),
+                    "delta_chars": len(pair["delta_text"]) if variant == "canonical_plus_delta" else 0,
+                    "reuse_policy": kv_reuse_mode,
                     "combined_similarity": round(pair["combined_similarity"], 6),
                 }
             )
@@ -243,6 +311,7 @@ def strip_text_fields(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         clean = dict(row)
         clean.pop("left_text", None)
         clean.pop("right_text", None)
+        clean.pop("delta_text", None)
         stripped.append(clean)
     return stripped
 
@@ -278,7 +347,8 @@ def main() -> int:
                 "block_manifest": (args.output_dir / "semantic_similarity_block_manifest.jsonl").as_posix(),
                 "runtime_principle": {
                     "direct_kv_reuse_requires": "same model, tokenizer, exact token ids, positions, and attention history",
-                    "semantic_similarity_use": "candidate detection, canonicalization, or context substitution before runtime",
+                    "semantic_similarity_use": "candidate detection, semantic grouping, canonical context substitution, and task-specific delta preservation before runtime",
+                    "proposed_condition": "canonical_plus_delta",
                     "unsafe_case": "do not splice KV for token-different paraphrases without a validated approximate-attention method",
                 },
             },

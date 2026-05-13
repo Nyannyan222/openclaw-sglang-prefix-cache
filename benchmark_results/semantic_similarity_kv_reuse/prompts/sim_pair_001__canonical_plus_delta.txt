@@ -1,0 +1,15 @@
+[CANONICAL_CONTEXT]
+
+Output Format (Please strictly follow the format below): Total number of searches: <number> Search 1: <query> Finding: <one-sentence summary> Search 2: <query> Finding: <one-sentence summary> ... Final Answer: First introduced in version: <version> Corresponding PR: <PR number> Evidence Chain: <Evidence 1: page title + key conclusion + URL> <Evidence 2: page title + key conclusion + URL> Reasoning: <Use 3–5 sentences to explain why these pieces of evidence are sufficient to support the final answer>
+
+[/CANONICAL_CONTEXT]
+
+[TASK_SPECIFIC_DELTA]
+
+Question: From which Python version was `pathlib.Path.walk()` added to the standard library?
+Please further determine: what is the CPython GitHub Pull Request number that merged it?
+Please provide the final answer and output a complete evidence chain proving your conclusion.
+
+[/TASK_SPECIFIC_DELTA]
+
+Task: Use the canonical context as reusable evidence and apply the task-specific delta to preserve details from the similar context. Give a one-sentence summary and say whether the combined context is sufficient evidence. Metadata: pair=sim_pair_001; variant=canonical_plus_delta; similarity=0.1836; reuse_policy=semantic_canonicalization_with_delta.

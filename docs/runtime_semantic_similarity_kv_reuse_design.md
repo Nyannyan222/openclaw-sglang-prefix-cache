@@ -20,8 +20,11 @@ For semantically similar text, the safe path is:
 
 1. detect similarity,
 2. choose or create a canonical context block,
-3. substitute the canonical block into prompts,
-4. let native prefix cache or exact semantic-block cache reuse the canonical tokens.
+3. extract task-specific delta from the similar context,
+4. build `canonical context + delta` prompts,
+5. let native prefix cache or exact semantic-block cache reuse the canonical tokens.
+
+This method is `Semantic Sub-context Canonicalization with Delta Preservation`.
 
 ## New Protocol
 
@@ -56,11 +59,13 @@ Expected native SGLang behavior:
 
 - `canonical_context`: low cache on first use;
 - `similar_context`: only tiny fixed-marker cache if token-different, even if similarity is high;
+- `canonical_plus_delta`: higher cache than `similar_context` because it starts with exact canonical tokens, while still preserving task-specific delta;
 - `canonical_context_repeat`: high cache because the exact canonical text appears first and repeats.
 
-The gap between `similar_context` and `canonical_context_repeat` motivates a
-semantic similarity layer that canonicalizes or substitutes similar context
-before runtime, rather than unsafe approximate KV tensor reuse.
+The key comparison is `similar_context` vs `canonical_plus_delta`. If
+`canonical_plus_delta` has higher cached-token ratio and lower prefill while
+preserving answer quality, then the proposed method improves runtime reuse
+without unsafe token-different KV tensor splicing.
 
 The generated prompts are context-first by design. The first tokens are the
 candidate context block rather than a long shared instruction prefix, which makes
