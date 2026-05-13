@@ -70,9 +70,22 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   Creates the phase-2 task-selection manifest, grading rubric, manual grading
   sheet, and SGLang runtime replay manifest.
 
+- `scripts/prepare_wildclaw_mixed_category_eval.py`
+  Builds a mixed-category WildClawBench manifest across Productivity, Search
+  Retrieval, and Safety conditions. It supports prompt-only rows when a local
+  workspace is absent, while preserving the same framework-eval runner shape.
+
 - `scripts/run_wildclaw_sglang_runtime_replay.py`
   Replays WildClaw prompts through an SGLang OpenAI-compatible endpoint and
   records cached-token, prefill-token estimate, and latency metrics.
+
+- `scripts/prepare_semantic_nonprefix_kv_reuse.py`
+  Generates runtime prompts and a semantic block manifest for measuring
+  non-prefix KV reuse opportunity with reordered semantic sub-contexts.
+
+- `docs/runtime_nonprefix_kv_reuse_design.md`
+  Runtime hook contract for moving from native prefix cache observation toward
+  semantic non-prefix KV reuse inside SGLang.
 
 - `docs/neno5_setup.md`  
   Step-by-step instructions for reproducing the initial OpenClaw + SGLang runtime setup on `neno5`/`nano5`.

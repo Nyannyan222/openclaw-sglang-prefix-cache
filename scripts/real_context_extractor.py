@@ -367,14 +367,19 @@ def extract_tasks(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
         task_md = task_file_for(task_root, category, task_id)
         task = parse_task_markdown(task_md)
         workspace_dir = workspace_path_for(workspace_root, task)
-        if not workspace_dir.exists():
+        workspace_missing = not workspace_dir.exists()
+        if workspace_missing and not args.allow_missing_workspace:
             raise FileNotFoundError(f"Workspace directory not found: {workspace_dir}")
 
-        files = [
-            read_source_file(path, workspace_dir, args.max_file_bytes, args.max_chars_per_file)
-            for path in sorted(workspace_dir.rglob("*"))
-            if path.is_file()
-        ]
+        files = (
+            [
+                read_source_file(path, workspace_dir, args.max_file_bytes, args.max_chars_per_file)
+                for path in sorted(workspace_dir.rglob("*"))
+                if path.is_file()
+            ]
+            if not workspace_missing
+            else []
+        )
         included_files += sum(1 for item in files if item.included_in_context)
         skipped_files += sum(1 for item in files if not item.included_in_context)
         long_context = build_long_context(task, files)
@@ -385,6 +390,7 @@ def extract_tasks(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
                 "created_at": now_iso(),
                 "task": task,
                 "workspace_dir": workspace_dir.as_posix(),
+                "workspace_missing": workspace_missing,
                 "source_files": [asdict(item) for item in files],
                 "long_context": long_context,
                 "long_context_chars": len(long_context),
@@ -412,6 +418,7 @@ def extract_tasks(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
                 "name": item["task"].get("name", ""),
                 "category": item["task"]["category"],
                 "workspace_dir": item["workspace_dir"],
+                "workspace_missing": item["workspace_missing"],
                 "included_files": sum(1 for src in item["source_files"] if src["included_in_context"]),
                 "skipped_files": sum(1 for src in item["source_files"] if not src["included_in_context"]),
                 "long_context_chars": item["long_context_chars"],
@@ -451,6 +458,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-file-bytes", type=int, default=2_000_000)
     parser.add_argument("--max-chars-per-file", type=int, default=80_000)
+    parser.add_argument(
+        "--allow-missing-workspace",
+        action="store_true",
+        help="Use prompt-only context rows when a task workspace is absent.",
+    )
     return parser.parse_args()
 
 
