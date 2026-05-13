@@ -309,5 +309,11 @@ latest_run="$(ls -td "$OUTPUT_DIR"/wildclaw_sglang_runtime_* | head -1)"
 echo "$latest_run"
 find "$latest_run" -maxdepth 1 -type f -print
 echo
+echo "== WildClaw runtime summary =="
+"$RUNTIME_DIR/.venv/bin/python" scripts/summarize_wildclaw_runtime_results.py \
+  "$latest_run/wildclaw_sglang_runtime_results.csv" \
+  --output "$latest_run/wildclaw_sglang_runtime_summary.md"
+cat "$latest_run/wildclaw_sglang_runtime_summary.md"
+echo
 echo "== Cache log sample =="
 grep -E "#cached-token|cached_tokens|request.finished|cache_lookup" "$SGLANG_LOG" | tail -n 80 || true
