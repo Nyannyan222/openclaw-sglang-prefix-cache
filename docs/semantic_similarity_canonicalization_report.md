@@ -1,5 +1,15 @@
 # Semantic Sub-context Canonicalization Report
 
+## Archived Direction
+
+This report is retained as an earlier runtime-cache experiment. It should not be
+treated as the current main method.
+
+The current direction is **semantic sub-context similarity discovery**: find
+genuinely semantically similar WildClawBench sub-context pairs/groups using
+embedding similarity, LLM judge, and manual review. See
+`docs/semantic_subcontext_similarity_discovery.md`.
+
 ## Method
 
 We propose **Semantic Sub-context Canonicalization with Delta Preservation**.

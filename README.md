@@ -93,6 +93,11 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   manifest for testing similarity detection, canonicalization, and exact-token
   cache reuse opportunity.
 
+- `scripts/find_semantic_similar_subcontexts.py`
+  Finds genuinely semantically similar WildClaw sub-context pairs/groups.
+  Lexical overlap is only a prefilter; OpenAI embeddings and optional LLM judge
+  provide the semantic signal when `OPENAI_API_KEY` is available.
+
 - `scripts/run_semantic_similarity_local_or_neno5.ps1`
   Runs the semantic-similarity manifest preparation locally and, if a local
   SGLang endpoint is already available, runs the runtime replay locally;
@@ -112,9 +117,11 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   tokens instead of directly splicing token-different KV tensors.
 
 - `docs/semantic_similarity_canonicalization_report.md`
-  Report-ready summary of the neno5 result showing that
-  `canonical_plus_delta` improves cached-token ratio over native
-  `similar_context` by preserving a reusable canonical prefix plus delta.
+  Archived report for the earlier canonical-prefix cache-reuse experiment.
+
+- `docs/semantic_subcontext_similarity_discovery.md`
+  Current direction for finding genuinely semantically similar WildClawBench
+  sub-context pairs/groups using embeddings, LLM judge, and manual review.
 
 - `docs/local_rtx5070_neno5_execution_plan.md`
   Execution split for running data preparation and reports on the local RTX
