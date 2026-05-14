@@ -4,3 +4,5 @@ __pycache__/
 .env.local
 external/sglang/
 external/WildClawBench/
+benchmark_results/wildclaw_mixed_category_eval_runs/
+benchmark_results/wildclaw_similarity_task_selection_probe/
