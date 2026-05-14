@@ -126,12 +126,63 @@ OpenAI-backed strict artifacts:
 - `benchmark_results/semantic_similarity_discovery_openai_strict/semantic_similarity_manual_review.csv`
 - `benchmark_results/semantic_similarity_discovery_openai_strict/semantic_similarity_discovery_protocol.json`
 
+## Mixed-Category Strict Run
+
+The next run expanded the input to the mixed-category pilot:
+
+- Input: `benchmark_results/wildclaw_mixed_category_eval/wildclaw_semantic_subcontext_pilot.jsonl`
+- Rows: 12 semantic sub-contexts
+- Categories: Productivity Flow, Search Retrieval, Safety Alignment
+- Pair policy: all pairwise combinations, including cross-category pairs
+- Candidate pairs evaluated: 66
+
+Command:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\find_semantic_similar_subcontexts.py `
+  --semantic-jsonl benchmark_results\wildclaw_mixed_category_eval\wildclaw_semantic_subcontext_pilot.jsonl `
+  --output-dir benchmark_results\semantic_similarity_discovery_mixed_strict `
+  --backend openai_embedding_judge `
+  --prefilter-threshold 0 `
+  --embedding-threshold 0.72 `
+  --judge-threshold 3 `
+  --min-match-embedding 0.50 `
+  --require-same-answer-utility `
+  --max-candidates 66
+```
+
+Result:
+
+| metric | value |
+| --- | ---: |
+| candidate pairs evaluated | 66 |
+| semantic matches | 0 |
+| semantic groups | 0 |
+| embedding model | `text-embedding-3-small` |
+| judge model | `gpt-4o-mini` |
+
+The strongest mixed-category candidates were still rejected as strict semantic
+matches. The judge consistently labeled them as `partial_overlap`,
+`broad_topic`, or `unrelated`, with `same_answer_utility=false`. For example,
+several Chinese law sections were top embedding neighbors because they share a
+legal/regulatory domain, but they describe different legal areas and cannot
+substitute for one another as evidence.
+
+Mixed strict artifacts:
+
+- `benchmark_results/semantic_similarity_discovery_mixed_strict/semantic_similar_subcontext_pairs.csv`
+- `benchmark_results/semantic_similarity_discovery_mixed_strict/semantic_similar_subcontext_pairs.jsonl`
+- `benchmark_results/semantic_similarity_discovery_mixed_strict/semantic_similar_subcontext_groups.jsonl`
+- `benchmark_results/semantic_similarity_discovery_mixed_strict/semantic_similarity_manual_review.csv`
+- `benchmark_results/semantic_similarity_discovery_mixed_strict/semantic_similarity_discovery_protocol.json`
+
 ## Next Experiment
 
-The next experiment should expand beyond the small V3 Search Retrieval pilot.
-Use more WildClaw tasks and categories, then rerun the strict
-`openai_embedding_judge` pipeline. The deliverable should be a semantic
-similarity dataset:
+The next experiment should increase the number of WildClaw task workspaces and
+look specifically for repeated evidence, duplicated instructions, related API
+docs, repeated policy fragments, or near-duplicate workspace files. The current
+pilot rows are mostly complementary evidence rather than repeated meaning. The
+deliverable should be a semantic similarity dataset:
 
 ```text
 wildclaw_semantic_similar_subcontexts.jsonl
