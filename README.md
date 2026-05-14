@@ -88,6 +88,11 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   manifest for testing similarity detection, canonicalization, and exact-token
   cache reuse opportunity.
 
+- `scripts/run_semantic_similarity_local_or_neno5.ps1`
+  Runs the semantic-similarity manifest preparation locally and, if a local
+  SGLang endpoint is already available, runs the runtime replay locally;
+  otherwise it prints the matching neno5 `sbatch` command.
+
 - `docs/runtime_nonprefix_kv_reuse_design.md`
   Runtime hook contract for moving from native prefix cache observation toward
   semantic non-prefix KV reuse inside SGLang.
@@ -101,6 +106,11 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   Report-ready summary of the neno5 result showing that
   `canonical_plus_delta` improves cached-token ratio over native
   `similar_context` by preserving a reusable canonical prefix plus delta.
+
+- `docs/local_rtx5070_neno5_execution_plan.md`
+  Execution split for running data preparation and reports on the local RTX
+  5070 machine while sending SGLang runtime replay jobs to neno5 when the local
+  runtime is unavailable.
 
 - `docs/neno5_setup.md`  
   Step-by-step instructions for reproducing the initial OpenClaw + SGLang runtime setup on `neno5`/`nano5`.
