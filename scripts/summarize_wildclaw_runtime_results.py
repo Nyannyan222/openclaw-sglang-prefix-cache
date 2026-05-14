@@ -16,10 +16,7 @@ CONDITION_ORDER = [
     "file_based_chunks",
     "candidate_evidence_context",
     "v3_semantic_final_pass",
-    "canonical_context",
     "similar_context",
-    "canonical_plus_delta",
-    "canonical_context_repeat",
 ]
 
 

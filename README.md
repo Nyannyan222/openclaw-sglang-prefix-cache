@@ -80,29 +80,15 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   records cached-token, prefill-token estimate, and latency metrics. It can
   flush SGLang cache before each row/replay/pair for isolated cache experiments.
 
-- `scripts/summarize_semantic_similarity_runtime.py`
-  Produces per-pair summaries for semantic similarity canonicalization runs,
-  comparing native `similar_context` against `canonical_plus_delta`.
-
 - `scripts/prepare_semantic_nonprefix_kv_reuse.py`
   Generates runtime prompts and a semantic block manifest for measuring
   non-prefix KV reuse opportunity with reordered semantic sub-contexts.
-
-- `scripts/prepare_semantic_similarity_kv_reuse.py`
-  Finds semantically/content-similar sub-context pairs and builds a runtime
-  manifest for testing similarity detection, canonicalization, and exact-token
-  cache reuse opportunity.
 
 - `scripts/find_semantic_similar_subcontexts.py`
   Finds genuinely semantically similar WildClaw sub-context pairs/groups.
   Lexical overlap is only a prefilter; OpenAI embeddings and optional LLM judge
   provide the semantic signal when `OPENAI_API_KEY` is available. Strict mode
   requires judge agreement, enough embedding similarity, and same-answer utility.
-
-- `scripts/run_semantic_similarity_local_or_neno5.ps1`
-  Runs the semantic-similarity manifest preparation locally and, if a local
-  SGLang endpoint is already available, runs the runtime replay locally;
-  otherwise it prints the matching neno5 `sbatch` command.
 
 - `scripts/start_local_sglang_docker.ps1`
   Starts the local Docker Desktop SGLang runtime on the RTX 5070 using
@@ -111,14 +97,6 @@ This repository contains the initial setup notes and benchmark artifacts for tes
 - `docs/runtime_nonprefix_kv_reuse_design.md`
   Runtime hook contract for moving from native prefix cache observation toward
   semantic non-prefix KV reuse inside SGLang.
-
-- `docs/runtime_semantic_similarity_kv_reuse_design.md`
-  Design note for the safer semantic/content-similarity direction: detect
-  similar blocks, canonicalize/substitute them, then reuse exact canonical
-  tokens instead of directly splicing token-different KV tensors.
-
-- `docs/semantic_similarity_canonicalization_report.md`
-  Archived report for the earlier canonical-prefix cache-reuse experiment.
 
 - `docs/semantic_subcontext_similarity_discovery.md`
   Current direction for finding genuinely semantically similar WildClawBench

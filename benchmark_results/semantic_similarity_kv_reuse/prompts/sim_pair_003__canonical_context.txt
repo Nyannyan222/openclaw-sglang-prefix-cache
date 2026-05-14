@@ -1,7 +1,0 @@
-[CONTEXT_BLOCK]
-
-第一百三十五条　向人民法院请求保护民事权利的诉讼时效期间为二年，法律另有规定的除外。第一百三十七条　诉讼时效期间从知道或者应当知道权利被侵害时起计算。但是，从权利被侵害之日起超过二十年的，人民法院不予保护。有特殊情况的，人民法院可以延长诉讼时效期间。
-
-[/CONTEXT_BLOCK]
-
-Task: Based only on the context block above, give a one-sentence summary and say whether it is sufficient evidence. Metadata: pair=sim_pair_003; variant=canonical_context; similarity=0.1192; reuse_policy=semantic_similarity_candidate_no_direct_kv_reuse.

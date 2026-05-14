@@ -1,24 +1,10 @@
 # Semantic Sub-context Similarity Discovery
 
-## Direction Change
-
-We stop using `canonical_plus_delta` as the main method.
-
 The new objective is to find genuinely semantically similar WildClawBench
 sub-contexts. The output should be semantic pairs or semantic groups, not prompt
-prefix rewrites for SGLang cache reuse.
+rewrites for SGLang cache reuse.
 
-## What This Means
-
-Previous direction:
-
-```text
-semantic/content candidate
-→ canonical prefix + delta
-→ exact-prefix reuse in SGLang
-```
-
-New direction:
+## Pipeline
 
 ```text
 WildClaw semantic sub-contexts
@@ -164,4 +150,4 @@ Each row should contain:
 - `rationale`
 
 This dataset can later be used for retrieval, clustering, redundancy analysis,
-or a separate runtime cache design. It should not assume `canonical_plus_delta`.
+or a separate runtime cache design.

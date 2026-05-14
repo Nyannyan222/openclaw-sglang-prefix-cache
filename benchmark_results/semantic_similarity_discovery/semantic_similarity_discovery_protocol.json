@@ -13,5 +13,5 @@
     "groups_jsonl": "benchmark_results/semantic_similarity_discovery/semantic_similar_subcontext_groups.jsonl",
     "manual_review_csv": "benchmark_results/semantic_similarity_discovery/semantic_similarity_manual_review.csv"
   },
-  "note": "This pipeline finds semantic similarity only. It does not build canonical_plus_delta prompts or claim KV reuse."
+  "note": "This pipeline finds semantic similarity only and does not generate prompt rewrites for cache reuse."
 }

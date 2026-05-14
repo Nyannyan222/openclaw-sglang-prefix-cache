@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Find genuinely semantically similar WildClaw sub-contexts.
 
-This script replaces the canonical-plus-delta direction for the current
-research stage. Its output is a semantic-similarity dataset: pairs and groups
-of sub-contexts that are likely to express the same or highly overlapping
+This script builds a semantic-similarity dataset: pairs and groups of
+sub-contexts that are likely to express the same or highly overlapping
 meaning/evidence role.
 
 Lexical overlap is used only as a cheap prefilter. When an OpenAI API key is
@@ -484,7 +483,7 @@ def main() -> int:
                     "groups_jsonl": (args.output_dir / "semantic_similar_subcontext_groups.jsonl").as_posix(),
                     "manual_review_csv": (args.output_dir / "semantic_similarity_manual_review.csv").as_posix(),
                 },
-                "note": "This pipeline finds semantic similarity only. It does not build canonical_plus_delta prompts or claim KV reuse.",
+                "note": "This pipeline finds semantic similarity only and does not generate prompt rewrites for cache reuse.",
             },
             ensure_ascii=False,
             indent=2,

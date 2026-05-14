@@ -1,7 +1,0 @@
-[CONTEXT_BLOCK]
-
-Question: From which Python version was `pathlib.Path.walk()` added to the standard library? Please further determine: what is the CPython GitHub Pull Request number that merged it? Please provide the final answer and output a complete evidence chain proving your conclusion.
-
-[/CONTEXT_BLOCK]
-
-Task: Based only on the context block above, give a one-sentence summary and say whether it is sufficient evidence. Metadata: pair=sim_pair_005; variant=canonical_context; similarity=0.0566; reuse_policy=semantic_similarity_candidate_no_direct_kv_reuse.
