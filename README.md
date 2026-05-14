@@ -79,6 +79,10 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   Replays WildClaw prompts through an SGLang OpenAI-compatible endpoint and
   records cached-token, prefill-token estimate, and latency metrics.
 
+- `scripts/summarize_semantic_similarity_runtime.py`
+  Produces per-pair summaries for semantic similarity canonicalization runs,
+  comparing native `similar_context` against `canonical_plus_delta`.
+
 - `scripts/prepare_semantic_nonprefix_kv_reuse.py`
   Generates runtime prompts and a semantic block manifest for measuring
   non-prefix KV reuse opportunity with reordered semantic sub-contexts.
