@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Find genuinely semantically similar WildClaw sub-contexts.
 
-This script replaces the canonical-plus-delta direction for the next research
-stage. Its output is a semantic-similarity dataset: pairs and groups of
-sub-contexts that are likely to express the same or highly overlapping meaning.
+This script replaces the canonical-plus-delta direction for the current
+research stage. Its output is a semantic-similarity dataset: pairs and groups
+of sub-contexts that are likely to express the same or highly overlapping
+meaning/evidence role.
 
 Lexical overlap is used only as a cheap prefilter. When an OpenAI API key is
 available, embeddings and an optional LLM judge provide the semantic signal.
@@ -164,7 +165,10 @@ def judge_pair(
     system = (
         "You judge whether two benchmark sub-contexts are semantically similar. "
         "Return strict JSON only. Focus on meaning, evidence role, and task relevance. "
-        "Do not reward identical formatting alone."
+        "Do not reward identical formatting alone. Do not mark two contexts as highly "
+        "similar just because they belong to the same task. If they cover different "
+        "parts of the task, label them as partial_overlap unless they can support "
+        "substantially the same answer or evidence role."
     )
     user = {
         "left": {
@@ -182,9 +186,9 @@ def judge_pair(
         "rubric": {
             "score_0": "unrelated or contradictory",
             "score_1": "same broad topic only",
-            "score_2": "partially overlapping evidence or role",
-            "score_3": "highly similar meaning but different details",
-            "score_4": "near-equivalent meaning/evidence",
+            "score_2": "same task/topic but different evidence role or different required detail",
+            "score_3": "highly overlapping meaning/evidence role with only minor detail differences",
+            "score_4": "near-equivalent meaning/evidence; either context could usually replace the other",
         },
         "required_json_schema": {
             "score": "integer 0-4",
@@ -263,11 +267,35 @@ def pair_candidates(
     return candidates
 
 
-def semantic_decision(row: dict[str, Any], embedding_threshold: float, judge_threshold: int) -> str:
+def truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() == "true"
+    return False
+
+
+def semantic_decision(
+    row: dict[str, Any],
+    embedding_threshold: float,
+    judge_threshold: int,
+    min_match_embedding: float,
+    require_same_answer_utility: bool,
+) -> str:
     judge_score = row.get("llm_judge_score")
     embedding_score = row.get("embedding_cosine")
     if judge_score not in ("", None):
-        return "semantic_match" if int(judge_score) >= judge_threshold else "semantic_reject"
+        judge_match = int(judge_score) >= judge_threshold
+        utility_match = truthy(row.get("same_answer_utility"))
+        embedding_match = (
+            embedding_score not in ("", None)
+            and float(embedding_score) >= min_match_embedding
+        )
+        if judge_match and (not require_same_answer_utility or utility_match) and embedding_match:
+            return "semantic_match"
+        if judge_match:
+            return "semantic_related_needs_review"
+        return "semantic_reject"
     if embedding_score not in ("", None):
         return "semantic_match" if float(embedding_score) >= embedding_threshold else "semantic_reject"
     return "needs_semantic_judge"
@@ -335,6 +363,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prefilter-threshold", type=float, default=0.02)
     parser.add_argument("--embedding-threshold", type=float, default=0.72)
     parser.add_argument("--judge-threshold", type=int, default=3)
+    parser.add_argument("--min-match-embedding", type=float, default=0.50, help="Minimum embedding cosine required for an LLM-judged semantic_match.")
+    parser.add_argument("--require-same-answer-utility", action="store_true", help="Require the LLM judge to say either context can support substantially the same answer/evidence role.")
     parser.add_argument("--max-candidates", type=int, default=50)
     parser.add_argument("--same-category-only", action="store_true")
     parser.add_argument("--different-task-only", action="store_true")
@@ -393,7 +423,13 @@ def main() -> int:
             candidate["same_answer_utility"] = ""
             candidate["llm_judge_rationale"] = ""
 
-        candidate["semantic_decision"] = semantic_decision(candidate, args.embedding_threshold, args.judge_threshold)
+        candidate["semantic_decision"] = semantic_decision(
+            candidate,
+            args.embedding_threshold,
+            args.judge_threshold,
+            args.min_match_embedding,
+            args.require_same_answer_utility,
+        )
         candidate["left_text_preview"] = left.get("sub_context", "")[:300].replace("\n", " ")
         candidate["right_text_preview"] = right.get("sub_context", "")[:300].replace("\n", " ")
         scored.append(strip_text(candidate))
@@ -440,6 +476,8 @@ def main() -> int:
                 "embedding_threshold": args.embedding_threshold,
                 "judge_model": args.judge_model if backend == "openai_embedding_judge" else "",
                 "judge_threshold": args.judge_threshold if backend == "openai_embedding_judge" else "",
+                "min_match_embedding": args.min_match_embedding if backend == "openai_embedding_judge" else "",
+                "require_same_answer_utility": args.require_same_answer_utility if backend == "openai_embedding_judge" else "",
                 "outputs": {
                     "pairs_csv": (args.output_dir / "semantic_similar_subcontext_pairs.csv").as_posix(),
                     "pairs_jsonl": (args.output_dir / "semantic_similar_subcontext_pairs.jsonl").as_posix(),

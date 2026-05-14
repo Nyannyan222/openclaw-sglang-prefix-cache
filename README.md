@@ -96,7 +96,8 @@ This repository contains the initial setup notes and benchmark artifacts for tes
 - `scripts/find_semantic_similar_subcontexts.py`
   Finds genuinely semantically similar WildClaw sub-context pairs/groups.
   Lexical overlap is only a prefilter; OpenAI embeddings and optional LLM judge
-  provide the semantic signal when `OPENAI_API_KEY` is available.
+  provide the semantic signal when `OPENAI_API_KEY` is available. Strict mode
+  requires judge agreement, enough embedding similarity, and same-answer utility.
 
 - `scripts/run_semantic_similarity_local_or_neno5.ps1`
   Runs the semantic-similarity manifest preparation locally and, if a local

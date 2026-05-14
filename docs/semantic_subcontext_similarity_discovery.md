@@ -79,8 +79,7 @@ review queue:
 
 ## Current Local Output
 
-Because `OPENAI_API_KEY` was not available in the local environment, the current
-run is prefilter-only:
+The earlier prefilter-only run produced a manual review queue:
 
 - Output directory: `benchmark_results/semantic_similarity_discovery`
 - Candidates: 6
@@ -91,6 +90,40 @@ The zero matches do not mean there are no semantic matches. It means the run did
 not use embeddings or LLM judge, so each candidate is marked
 `needs_semantic_judge`.
 
+After creating a local `OPENAI_API_KEY`, the stricter OpenAI-backed discovery
+run evaluated all 45 same-category pairs from the V3 pilot:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\find_semantic_similar_subcontexts.py `
+  --semantic-jsonl benchmark_results\wildclaw_semantic_subcontext_pilot_v3\wildclaw_semantic_subcontext_pilot.jsonl `
+  --output-dir benchmark_results\semantic_similarity_discovery_openai_strict `
+  --backend openai_embedding_judge `
+  --prefilter-threshold 0 `
+  --embedding-threshold 0.72 `
+  --judge-threshold 3 `
+  --min-match-embedding 0.50 `
+  --require-same-answer-utility `
+  --max-candidates 45 `
+  --same-category-only
+```
+
+Strict OpenAI-backed result:
+
+| metric | value |
+| --- | ---: |
+| candidate pairs evaluated | 45 |
+| semantic matches | 0 |
+| semantic groups | 0 |
+| embedding model | `text-embedding-3-small` |
+| judge model | `gpt-4o-mini` |
+
+This is an important finding: the current V3 WildClaw Search Retrieval pilot
+does contain related sub-contexts, but under a strict semantic-similarity
+definition they are not near-equivalent or interchangeable. The high-scoring
+examples are partial-overlap pairs, such as statute-of-limitations duration vs
+statute-of-limitations suspension, or task requirements vs output format. These
+belong to the same task or domain, but they provide different evidence roles.
+
 Artifacts:
 
 - `benchmark_results/semantic_similarity_discovery/semantic_similar_subcontext_pairs.csv`
@@ -99,10 +132,20 @@ Artifacts:
 - `benchmark_results/semantic_similarity_discovery/semantic_similarity_manual_review.csv`
 - `benchmark_results/semantic_similarity_discovery/semantic_similarity_discovery_protocol.json`
 
+OpenAI-backed strict artifacts:
+
+- `benchmark_results/semantic_similarity_discovery_openai_strict/semantic_similar_subcontext_pairs.csv`
+- `benchmark_results/semantic_similarity_discovery_openai_strict/semantic_similar_subcontext_pairs.jsonl`
+- `benchmark_results/semantic_similarity_discovery_openai_strict/semantic_similar_subcontext_groups.jsonl`
+- `benchmark_results/semantic_similarity_discovery_openai_strict/semantic_similarity_manual_review.csv`
+- `benchmark_results/semantic_similarity_discovery_openai_strict/semantic_similarity_discovery_protocol.json`
+
 ## Next Experiment
 
-Set `OPENAI_API_KEY`, run `openai_embedding_judge`, then manually review the top
-20 pairs. The deliverable should be a semantic similarity dataset:
+The next experiment should expand beyond the small V3 Search Retrieval pilot.
+Use more WildClaw tasks and categories, then rerun the strict
+`openai_embedding_judge` pipeline. The deliverable should be a semantic
+similarity dataset:
 
 ```text
 wildclaw_semantic_similar_subcontexts.jsonl
