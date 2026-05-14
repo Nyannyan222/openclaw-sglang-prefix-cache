@@ -111,6 +111,12 @@ def scrape(url: str, timeout: float) -> dict[str, float]:
     return parse_prometheus(http_text(url, timeout))
 
 
+def post_text(url: str, timeout: float) -> str:
+    req = urllib.request.Request(url, data=b"", headers={"Accept": "text/plain"}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
 def metric_delta(before: dict[str, float], after: dict[str, float], name: str) -> float | None:
     if name not in before and name not in after:
         return None
@@ -156,6 +162,29 @@ def safe_read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8", errors="replace")
 
 
+def cache_group_key(row: dict[str, Any], mode: str) -> str:
+    if mode == "pair":
+        manifest_id = row.get("id", "")
+        if "::" in manifest_id:
+            return manifest_id.split("::", 1)[0]
+    return row.get("task_id", "") or row.get("id", "")
+
+
+def should_flush(args: argparse.Namespace, row: dict[str, Any], replay_index: int, last_group: str | None) -> tuple[bool, str | None]:
+    if not args.flush_cache_url or args.flush_before == "none":
+        return False, last_group
+    if args.flush_before == "row":
+        return True, last_group
+    if args.flush_before == "replay":
+        return True, last_group
+    if args.flush_before == "pair":
+        group = cache_group_key(row, "pair")
+        if replay_index == 1 and group != last_group:
+            return True, group
+        return False, last_group
+    return False, last_group
+
+
 def run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], Path]:
     rows = read_jsonl(args.manifest)
     if args.limit:
@@ -167,6 +196,7 @@ def run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], Path]:
     murl = args.metrics_url or metrics_url(args.base_url)
 
     results: list[dict[str, Any]] = []
+    last_flush_group: str | None = None
     for row in rows:
         prompt = safe_read(row["prompt_path"])
         prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
@@ -175,6 +205,18 @@ def run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], Path]:
             error = ""
             usage: dict[str, Any] = {}
             answer = ""
+            flushed_cache = False
+            flush_error = ""
+            do_flush, next_group = should_flush(args, row, replay_index, last_flush_group)
+            if do_flush:
+                try:
+                    post_text(args.flush_cache_url, args.metrics_timeout)
+                    flushed_cache = True
+                    last_flush_group = next_group
+                    time.sleep(args.flush_settle_seconds)
+                except Exception as exc:
+                    flushed_cache = False
+                    flush_error = str(exc)
             before = scrape(murl, args.metrics_timeout)
             started = time.perf_counter()
             try:
@@ -227,6 +269,8 @@ def run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], Path]:
                 "latency_s": round(elapsed, 4),
                 "answer_chars": len(answer),
                 "error": error,
+                "flushed_cache_before": flushed_cache,
+                "flush_error": flush_error,
             }
             for name in METRICS:
                 delta = metric_delta(before, after, name)
@@ -243,6 +287,8 @@ def run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], Path]:
                 "metrics_url": murl,
                 "model": args.model,
                 "repeat": args.repeat,
+                "flush_cache_url": args.flush_cache_url,
+                "flush_before": args.flush_before,
                 "rows": results,
             },
             ensure_ascii=False,
@@ -270,6 +316,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-tokens", type=int, default=256)
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--metrics-timeout", type=float, default=5)
+    parser.add_argument("--flush-cache-url", default="", help="Optional SGLang cache flush endpoint, for example http://127.0.0.1:30000/flush_cache")
+    parser.add_argument(
+        "--flush-before",
+        choices=["none", "row", "replay", "pair"],
+        default="none",
+        help="Flush cache before each row/replay/pair. Pair mode uses the manifest id prefix before '::'.",
+    )
+    parser.add_argument("--flush-settle-seconds", type=float, default=0.1)
     return parser.parse_args()
 
 

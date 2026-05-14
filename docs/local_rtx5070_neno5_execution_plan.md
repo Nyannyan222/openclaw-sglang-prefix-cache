@@ -75,6 +75,13 @@ run the runtime replay locally:
 If the endpoint is absent, the script prints the matching neno5 `sbatch`
 command instead of failing.
 
+For the cleaner isolated pair protocol, flush the SGLang cache before each
+similarity pair:
+
+```powershell
+.\scripts\run_semantic_similarity_local_or_neno5.ps1 -RunRuntime -Limit 0 -Repeat 1 -FlushBefore pair
+```
+
 Local validation on 2026-05-14 succeeded with 20 rows and 0 errors.
 
 | condition | rows | avg prompt | avg cached | avg prefill | cached ratio | avg latency s |
@@ -83,6 +90,17 @@ Local validation on 2026-05-14 succeeded with 20 rows and 0 errors.
 | `similar_context` | 5 | 163 | 77.8 | 85.2 | 47.7% | 0.6867 |
 | `canonical_plus_delta` | 5 | 305 | 183 | 122 | 60.0% | 0.6545 |
 | `canonical_context_repeat` | 5 | 190 | 162 | 28 | 85.3% | 0.6322 |
+
+The isolated pair replay on 2026-05-14 also succeeded with 20 rows and 0
+errors. Because it flushes cache before each pair, it removes cross-pair order
+effects:
+
+| condition | rows | avg prompt | avg cached | avg prefill | cached ratio | avg latency s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `canonical_context` | 5 | 189 | 0 | 189 | 0.0% | 0.7134 |
+| `similar_context` | 5 | 163 | 28.4 | 134.6 | 17.4% | 0.6608 |
+| `canonical_plus_delta` | 5 | 305 | 183 | 122 | 60.0% | 0.6836 |
+| `canonical_context_repeat` | 5 | 190 | 162 | 28 | 85.3% | 0.6733 |
 
 ## neno5 Runtime Replay
 

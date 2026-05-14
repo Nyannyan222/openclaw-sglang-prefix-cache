@@ -11,6 +11,9 @@ param(
     [int]$Repeat = 1,
     [int]$Limit = 0,
     [int]$MaxTokens = 64,
+    [ValidateSet("none", "row", "replay", "pair")]
+    [string]$FlushBefore = "none",
+    [string]$FlushCacheUrl = "http://127.0.0.1:30000/flush_cache",
     [string]$Account = "MST114180"
 )
 
@@ -105,6 +108,10 @@ $replayArgs = @(
 
 if ($Limit -ne 0) {
     $replayArgs += @("--limit", "$Limit")
+}
+
+if ($FlushBefore -ne "none") {
+    $replayArgs += @("--flush-cache-url", $FlushCacheUrl, "--flush-before", $FlushBefore)
 }
 
 & $Python @replayArgs

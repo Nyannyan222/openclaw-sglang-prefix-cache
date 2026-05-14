@@ -77,7 +77,8 @@ This repository contains the initial setup notes and benchmark artifacts for tes
 
 - `scripts/run_wildclaw_sglang_runtime_replay.py`
   Replays WildClaw prompts through an SGLang OpenAI-compatible endpoint and
-  records cached-token, prefill-token estimate, and latency metrics.
+  records cached-token, prefill-token estimate, and latency metrics. It can
+  flush SGLang cache before each row/replay/pair for isolated cache experiments.
 
 - `scripts/summarize_semantic_similarity_runtime.py`
   Produces per-pair summaries for semantic similarity canonicalization runs,
