@@ -93,6 +93,10 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   SGLang endpoint is already available, runs the runtime replay locally;
   otherwise it prints the matching neno5 `sbatch` command.
 
+- `scripts/start_local_sglang_docker.ps1`
+  Starts the local Docker Desktop SGLang runtime on the RTX 5070 using
+  `lmsysorg/sglang:latest-runtime` and `Qwen/Qwen2.5-0.5B-Instruct`.
+
 - `docs/runtime_nonprefix_kv_reuse_design.md`
   Runtime hook contract for moving from native prefix cache observation toward
   semantic non-prefix KV reuse inside SGLang.

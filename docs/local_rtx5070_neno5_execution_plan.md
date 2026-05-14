@@ -21,10 +21,34 @@ already running:
 - Cached-token, prefill-token, and latency measurements.
 - Larger model or larger manifest runs.
 
-Current local status: the machine has an RTX 5070 with about 12 GB VRAM, but
-the project `.venv` does not currently include PyTorch/SGLang. Therefore the
-local machine is ready for manifest/report stages, while runtime replay should
-go to neno5 unless a local SGLang runtime is installed separately.
+Current local status:
+
+- WSL2 Ubuntu is installed.
+- WSL2 can see the RTX 5070 through `nvidia-smi`.
+- Docker Desktop is installed and Docker GPU pass-through works.
+- The SGLang Docker runtime can serve `Qwen/Qwen2.5-0.5B-Instruct` locally on
+  `http://127.0.0.1:30000/v1`.
+
+The native Windows project `.venv` still does not need PyTorch/SGLang. Runtime
+serving is handled by Docker, while the replay and report scripts run from the
+local repository.
+
+## Start Local SGLang Docker
+
+```powershell
+.\scripts\start_local_sglang_docker.ps1
+```
+
+This starts:
+
+- Container: `openclaw-sglang-local`
+- Image: `lmsysorg/sglang:latest-runtime`
+- Model: `Qwen/Qwen2.5-0.5B-Instruct`
+- Endpoint: `http://127.0.0.1:30000/v1`
+
+The script installs the missing `distro` Python package inside the container
+before launching SGLang. This is needed for the current `latest-runtime` image
+because the OpenAI package imports `distro` during server startup.
 
 ## One-Command Local Preparation
 
@@ -50,6 +74,15 @@ run the runtime replay locally:
 
 If the endpoint is absent, the script prints the matching neno5 `sbatch`
 command instead of failing.
+
+Local validation on 2026-05-14 succeeded with 20 rows and 0 errors.
+
+| condition | rows | avg prompt | avg cached | avg prefill | cached ratio | avg latency s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `canonical_context` | 5 | 189 | 73.6 | 115.4 | 38.9% | 0.7757 |
+| `similar_context` | 5 | 163 | 77.8 | 85.2 | 47.7% | 0.6867 |
+| `canonical_plus_delta` | 5 | 305 | 183 | 122 | 60.0% | 0.6545 |
+| `canonical_context_repeat` | 5 | 190 | 162 | 28 | 85.3% | 0.6322 |
 
 ## neno5 Runtime Replay
 
