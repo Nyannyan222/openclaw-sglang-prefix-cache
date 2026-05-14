@@ -97,6 +97,11 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   similar blocks, canonicalize/substitute them, then reuse exact canonical
   tokens instead of directly splicing token-different KV tensors.
 
+- `docs/semantic_similarity_canonicalization_report.md`
+  Report-ready summary of the neno5 result showing that
+  `canonical_plus_delta` improves cached-token ratio over native
+  `similar_context` by preserving a reusable canonical prefix plus delta.
+
 - `docs/neno5_setup.md`  
   Step-by-step instructions for reproducing the initial OpenClaw + SGLang runtime setup on `neno5`/`nano5`.
 

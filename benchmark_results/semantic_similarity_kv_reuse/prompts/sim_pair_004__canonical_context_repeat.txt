@@ -1,0 +1,7 @@
+[CONTEXT_BLOCK]
+
+Mandatory Requirements: 1. The total number of searches must not exceed 4. 2. The answer may only be based on publicly searchable webpages. 3. The answer must explicitly state: (1) the total number of searches performed; (2) the query used for each search. 4. A complete evidence chain must be provided. 5. If the answer cannot be confirmed within the search budget, the task must be terminated, and you must explicitly state “Unable to confirm.” Do not guess.
+
+[/CONTEXT_BLOCK]
+
+Task: Based only on the context block above, give a one-sentence summary and say whether it is sufficient evidence. Metadata: pair=sim_pair_004; variant=canonical_context_repeat; similarity=0.1052; reuse_policy=semantic_similarity_candidate_no_direct_kv_reuse.

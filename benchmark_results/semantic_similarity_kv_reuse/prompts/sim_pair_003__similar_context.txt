@@ -1,0 +1,7 @@
+[CONTEXT_BLOCK]
+
+第一百三十九条　在诉讼时效期间的最后六个月内，因不可抗力或者其他障碍不能行使请求权的，诉讼时效中止。从中止时效的原因消除之日起，诉讼时效期间继续计算。
+
+[/CONTEXT_BLOCK]
+
+Task: Based only on the context block above, give a one-sentence summary and say whether it is sufficient evidence. Metadata: pair=sim_pair_003; variant=similar_context; similarity=0.1192; reuse_policy=semantic_similarity_candidate_no_direct_kv_reuse.

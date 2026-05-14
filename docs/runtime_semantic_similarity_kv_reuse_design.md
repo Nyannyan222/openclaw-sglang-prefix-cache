@@ -34,7 +34,7 @@ Use:
 python scripts/prepare_semantic_similarity_kv_reuse.py \
   --semantic-jsonl benchmark_results/wildclaw_semantic_subcontext_pilot_v3/wildclaw_semantic_subcontext_pilot.jsonl \
   --output-dir benchmark_results/semantic_similarity_kv_reuse \
-  --threshold 0.18 \
+  --threshold 0.05 \
   --max-pairs 8
 ```
 

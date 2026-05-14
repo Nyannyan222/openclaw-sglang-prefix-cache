@@ -170,7 +170,6 @@ def pair_rows(rows: list[dict[str, Any]], threshold: float, same_category_only: 
             normalized_exact = normalized_hash(left_text) == normalized_hash(right_text)
             candidates.append(
                 {
-                    "pair_id": f"sim_pair_{len(candidates) + 1:03d}",
                     "left_id": left.get("id", ""),
                     "right_id": right.get("id", ""),
                     "left_task_id": left.get("task_id", ""),
@@ -198,6 +197,10 @@ def pair_rows(rows: list[dict[str, Any]], threshold: float, same_category_only: 
                 }
             )
     candidates.sort(key=lambda row: row["combined_similarity"], reverse=True)
+    for index, row in enumerate(candidates):
+        ranked = {"pair_id": f"sim_pair_{index + 1:03d}"}
+        ranked.update(row)
+        candidates[index] = ranked
     return candidates
 
 
@@ -314,7 +317,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--semantic-jsonl", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("benchmark_results/semantic_similarity_kv_reuse"))
-    parser.add_argument("--threshold", type=float, default=0.18)
+    parser.add_argument("--threshold", type=float, default=0.05)
     parser.add_argument("--max-pairs", type=int, default=8)
     parser.add_argument("--same-category-only", action="store_true")
     return parser.parse_args()
