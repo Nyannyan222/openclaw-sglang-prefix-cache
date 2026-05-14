@@ -90,6 +90,15 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   provide the semantic signal when `OPENAI_API_KEY` is available. Strict mode
   requires judge agreement, enough embedding similarity, and same-answer utility.
 
+- `scripts/select_wildclaw_similarity_tasks.py`
+  Ranks WildClawBench tasks/workspaces by how likely they are to contain
+  repeated or near-repeated real-context evidence, then writes a selected task
+  list for the next semantic segmentation pilot.
+
+- `docs/wildclaw_similarity_task_selector.md`
+  Usage notes and current local selector result for choosing better
+  WildClawBench semantic-similarity source tasks.
+
 - `scripts/start_local_sglang_docker.ps1`
   Starts the local Docker Desktop SGLang runtime on the RTX 5070 using
   `lmsysorg/sglang:latest-runtime` and `Qwen/Qwen2.5-0.5B-Instruct`.
