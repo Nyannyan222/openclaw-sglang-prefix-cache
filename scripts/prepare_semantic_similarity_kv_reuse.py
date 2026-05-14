@@ -223,24 +223,18 @@ def prompt_for(pair: dict[str, Any], variant: str, text: str) -> str:
 
 def canonical_plus_delta_prompt(pair: dict[str, Any]) -> str:
     canonical_text = pair["left_text"]
-    similar_text = pair["right_text"]
     delta_text = pair["delta_text"]
-    return "\n\n".join(
+    canonical_prefix = prompt_for(pair, "canonical_context", canonical_text)
+    return canonical_prefix + "\n\n" + "\n\n".join(
         [
-            "[CANONICAL_CONTEXT]",
-            canonical_text,
-            "[/CANONICAL_CONTEXT]",
-            "[TASK_SPECIFIC_DELTA]",
+            "[DELTA_BLOCK]",
             delta_text,
-            "[/TASK_SPECIFIC_DELTA]",
+            "[/DELTA_BLOCK]",
             (
-                "Task: Use the canonical context as reusable evidence and apply "
-                "the task-specific delta to preserve details from the similar "
-                "context. Give a one-sentence summary and say whether the combined "
-                "context is sufficient evidence. "
-                f"Metadata: pair={pair['pair_id']}; variant=canonical_plus_delta; "
-                f"similarity={pair['combined_similarity']:.4f}; "
-                f"reuse_policy=semantic_canonicalization_with_delta."
+                "Additional instruction: Preserve the canonical context above as "
+                "the reusable prefix, then apply DELTA_BLOCK for task-specific "
+                "details. Metadata: variant=canonical_plus_delta; "
+                "reuse_policy=semantic_canonicalization_with_delta."
             ),
         ]
     )

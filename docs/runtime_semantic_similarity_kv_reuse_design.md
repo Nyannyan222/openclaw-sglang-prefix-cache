@@ -71,3 +71,7 @@ The generated prompts are context-first by design. The first tokens are the
 candidate context block rather than a long shared instruction prefix, which makes
 `cached_tokens` easier to interpret as context reuse instead of prompt-template
 reuse.
+
+For `canonical_plus_delta`, the prompt intentionally starts with the exact same
+token prefix as `canonical_context` and appends `DELTA_BLOCK` afterward. This is
+necessary because SGLang's native prefix cache only matches exact prefixes.
