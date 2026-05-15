@@ -82,6 +82,22 @@ pipeline. The pipeline uses multiple filtering stages:
 The lexical prefilter is only used to cheaply reduce the search space. The main
 semantic signal comes from embeddings and the LLM judge.
 
+I also separated request relevance from reuse eligibility. A sub-context can be
+relevant to the current request without being reusable as an equivalent context.
+The reuse relation taxonomy is:
+
+| relation type | meaning | reuse eligibility |
+| --- | --- | --- |
+| `exact_duplicate` | content is nearly identical after normalization | yes |
+| `near_duplicate` | different wording but potentially equivalent information | yes, after judge |
+| `same_answer_utility` | either context can support the same answer/evidence role | yes |
+| `partial_overlap` | some information overlaps, but evidence role may differ | no / maybe |
+| `broad_topic` | same topic/domain but different use | no |
+| `unrelated` | no meaningful relation | no |
+
+This makes the contribution clearer: embedding similarity finds candidates, and
+the LLM judge separates reusable evidence from merely related context.
+
 The strict matching criteria require:
 
 - sufficient embedding cosine similarity,

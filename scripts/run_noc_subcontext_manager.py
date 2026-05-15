@@ -47,8 +47,10 @@ def flatten_decision(row: dict[str, Any]) -> dict[str, Any]:
 
 def write_report(path: Path, summary: dict[str, Any], selected: list[dict[str, Any]], decisions: list[dict[str, Any]]) -> None:
     decision_counts: dict[str, int] = {}
+    relation_counts: dict[str, int] = {}
     for decision in decisions:
         decision_counts[decision["decision"]] = decision_counts.get(decision["decision"], 0) + 1
+        relation_counts[decision["relation_type"]] = relation_counts.get(decision["relation_type"], 0) + 1
 
     lines = [
         "# NOC Semantic Sub-context Manager Smoke Run",
@@ -59,6 +61,21 @@ def write_report(path: Path, summary: dict[str, Any], selected: list[dict[str, A
         f"- Tasks: {summary['task_count']}",
         f"- Categories: {summary['category_count']}",
         f"- Duplicate content hashes: {summary['duplicate_content_hash_count']}",
+        "",
+        "## Relevant vs Reusable",
+        "",
+        "The selected context list answers the relevance question: which sub-contexts",
+        "should accompany this request. The reuse relation table answers a separate",
+        "question: whether two sub-contexts are safe to reuse as equivalent evidence.",
+        "",
+        "| relation type | meaning | reuse eligibility |",
+        "| --- | --- | --- |",
+        "| `exact_duplicate` | content is nearly identical after normalization | yes |",
+        "| `near_duplicate` | different wording but potentially equivalent information | yes, after judge |",
+        "| `same_answer_utility` | either context can support the same answer/evidence role | yes |",
+        "| `partial_overlap` | some information overlaps, but evidence role may differ | no / maybe |",
+        "| `broad_topic` | same topic/domain but different use | no |",
+        "| `unrelated` | no meaningful relation | no |",
         "",
         "## Selected Contexts",
         "",
@@ -74,7 +91,15 @@ def write_report(path: Path, summary: dict[str, Any], selected: list[dict[str, A
             )
         )
 
-    lines.extend(["", "## Reuse Decision Summary", ""])
+    lines.extend(["", "## Reuse Relation Summary", ""])
+    if relation_counts:
+        lines.extend(["| relation type | count |", "| --- | ---: |"])
+        for relation, count in sorted(relation_counts.items()):
+            lines.append(f"| `{relation}` | {count} |")
+    else:
+        lines.append("No pair relations were generated.")
+
+    lines.extend(["", "## Decision Summary", ""])
     if decision_counts:
         lines.extend(["| decision | count |", "| --- | ---: |"])
         for decision, count in sorted(decision_counts.items()):
@@ -87,10 +112,11 @@ def write_report(path: Path, summary: dict[str, Any], selected: list[dict[str, A
             "",
             "## Interpretation",
             "",
-            "This prototype is conservative. Exact normalized content matches are marked",
-            "safe for reuse. High lexical similarity is marked as review-required rather",
-            "than safe, because semantic reuse must still be confirmed by embedding/LLM",
-            "judge and same-answer utility checks.",
+            "This prototype separates relevance from reusability. Embedding or lexical",
+            "similarity can find candidates, but the reuse decision remains conservative.",
+            "Only exact duplicates are immediately reusable. Near duplicates require",
+            "embedding/LLM judge confirmation, and same-answer utility should be required",
+            "before treating two sub-contexts as reusable evidence.",
             "",
         ]
     )

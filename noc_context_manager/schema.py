@@ -130,6 +130,8 @@ class ReuseDecision:
 
     left_id: str
     right_id: str
+    relation_type: str
+    reuse_eligibility: str
     decision: str
     reason: str
     safe_to_reuse: bool

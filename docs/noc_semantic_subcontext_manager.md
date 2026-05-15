@@ -15,6 +15,13 @@ decisions needed before runtime integration:
 4. identify possible reuse candidates,
 5. reject unsafe reuse by default.
 
+The manager intentionally separates two questions:
+
+- **Relevant:** should this sub-context be included in the current request's
+  context window?
+- **Reusable:** can this sub-context safely reuse another sub-context's evidence
+  or future KV-cache block?
+
 ## Components
 
 ### `SubContext`
@@ -86,15 +93,20 @@ candidates before stricter embedding or LLM judging.
 
 Conservative reuse policy.
 
-Default decisions:
+Reuse relation taxonomy:
 
-- `safe_exact_content_reuse`: normalized content hashes match exactly.
-- `review_required`: high lexical similarity, but not safe without embedding or
-  LLM confirmation.
-- `reject_topic_or_partial_overlap`: related but too weak for reuse.
-- `reject_unrelated`: no safe reuse signal.
+| relation type | meaning | reuse eligibility |
+| --- | --- | --- |
+| `exact_duplicate` | content is nearly identical after normalization | yes |
+| `near_duplicate` | different wording but potentially equivalent information | yes, after judge |
+| `same_answer_utility` | either context can support the same answer/evidence role | yes |
+| `partial_overlap` | some information overlaps, but evidence role may differ | no / maybe |
+| `broad_topic` | same topic/domain but different use | no |
+| `unrelated` | no meaningful relation | no |
 
 This prevents topic-level similarity from being treated as true semantic reuse.
+Embedding similarity finds candidates; an LLM judge or manual review separates
+reusable evidence from merely related context.
 
 ## CLI
 

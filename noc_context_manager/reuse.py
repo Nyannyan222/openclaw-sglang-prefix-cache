@@ -12,9 +12,10 @@ class ReuseDecisionEngine:
 
     The default policy is deliberately conservative:
 
-    - exact normalized content hash matches are safe to reuse;
-    - high lexical similarity is review-required, not automatically reusable;
-    - broad topic overlap is rejected by default.
+    - exact normalized content hash matches are reusable;
+    - near-duplicate candidates require embedding/LLM judge confirmation;
+    - same-answer-utility can be ingested later from an LLM judge;
+    - partial overlap, broad topic, and unrelated pairs are not reusable.
 
     Embedding and LLM judge outputs can be layered on top of this component in a
     later runtime prototype.
@@ -38,7 +39,9 @@ class ReuseDecisionEngine:
             return ReuseDecision(
                 left_id=left.id,
                 right_id=right.id,
-                decision="safe_exact_content_reuse",
+                relation_type="exact_duplicate",
+                reuse_eligibility="yes",
+                decision="reuse_allowed",
                 reason="normalized content hashes match exactly",
                 safe_to_reuse=True,
                 requires_manual_or_llm_review=False,
@@ -49,10 +52,12 @@ class ReuseDecisionEngine:
             return ReuseDecision(
                 left_id=left.id,
                 right_id=right.id,
-                decision="review_required",
+                relation_type="near_duplicate",
+                reuse_eligibility="yes_after_judge",
+                decision="judge_required",
                 reason=(
-                    "high lexical similarity is not enough for semantic reuse; "
-                    "send to embedding/LLM judge and require same-answer utility"
+                    "candidate may be information-equivalent, but lexical similarity alone "
+                    "is not enough; send to embedding/LLM judge and require same-answer utility"
                 ),
                 safe_to_reuse=False,
                 requires_manual_or_llm_review=True,
@@ -63,8 +68,23 @@ class ReuseDecisionEngine:
             return ReuseDecision(
                 left_id=left.id,
                 right_id=right.id,
-                decision="reject_topic_or_partial_overlap",
-                reason="related context detected, but similarity is too weak for reuse",
+                relation_type="partial_overlap",
+                reuse_eligibility="no_or_maybe",
+                decision="do_not_reuse",
+                reason="some information may overlap, but the pair is not equivalent evidence",
+                safe_to_reuse=False,
+                requires_manual_or_llm_review=False,
+                similarity=signal,
+            )
+
+        if signal.same_task or signal.same_category:
+            return ReuseDecision(
+                left_id=left.id,
+                right_id=right.id,
+                relation_type="broad_topic",
+                reuse_eligibility="no",
+                decision="do_not_reuse",
+                reason="same task/category signal only; topic similarity is not reuse eligibility",
                 safe_to_reuse=False,
                 requires_manual_or_llm_review=False,
                 similarity=signal,
@@ -73,7 +93,9 @@ class ReuseDecisionEngine:
         return ReuseDecision(
             left_id=left.id,
             right_id=right.id,
-            decision="reject_unrelated",
+            relation_type="unrelated",
+            reuse_eligibility="no",
+            decision="do_not_reuse",
             reason="no safe reuse signal",
             safe_to_reuse=False,
             requires_manual_or_llm_review=False,
