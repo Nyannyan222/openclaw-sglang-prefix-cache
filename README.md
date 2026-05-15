@@ -90,6 +90,19 @@ This repository contains the initial setup notes and benchmark artifacts for tes
   provide the semantic signal when `OPENAI_API_KEY` is available. Strict mode
   requires judge agreement, enough embedding similarity, and same-answer utility.
 
+- `noc_context_manager/`
+  Prototype package for the NOC semantic sub-context manager: schema,
+  registry, request-time selector, lexical similarity judge, and conservative
+  reuse-decision engine.
+
+- `scripts/run_noc_subcontext_manager.py`
+  CLI smoke runner for loading WildClaw semantic JSONL artifacts into the NOC
+  sub-context manager and exporting selected contexts plus reuse decisions.
+
+- `docs/noc_semantic_subcontext_manager.md`
+  Step-1 design notes for turning the WildClaw semantic sub-context pipeline
+  into a formal NOC context-management component.
+
 - `scripts/select_wildclaw_similarity_tasks.py`
   Ranks WildClawBench tasks/workspaces by how likely they are to contain
   repeated or near-repeated real-context evidence, then writes a selected task
