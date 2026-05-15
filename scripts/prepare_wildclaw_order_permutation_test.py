@@ -114,7 +114,7 @@ def render_prompt(task_id: str, task_prompt: str, segments: list[dict[str, Any]]
         [
             "You are answering a WildClawBench task using only the provided real semantic sub-context evidence.",
             "This prompt is part of an order-permutation cache limitation test.",
-            f"condition: {condition}",
+            "The runtime condition is stored in the manifest, not in this prompt, so exact-repeat rows remain byte-identical.",
             f"task_id: {task_id}",
             "Original task prompt:",
             task_prompt,

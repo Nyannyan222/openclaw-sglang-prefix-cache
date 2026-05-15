@@ -2,7 +2,7 @@ You are answering a WildClawBench task using only the provided real semantic sub
 
 This prompt is part of an order-permutation cache limitation test.
 
-condition: real_semantic_order_original
+The runtime condition is stored in the manifest, not in this prompt, so exact-repeat rows remain byte-identical.
 
 task_id: 04_Search_Retrieval_task_4_efficient_search
 

@@ -63,14 +63,18 @@ if (-not (& $docker ps --filter "name=^/$ContainerName$" --format "{{.Names}}"))
     Invoke-Docker pull $Image
 
     Write-Host "Starting SGLang container: $ContainerName"
-    Invoke-Docker run -d `
-        --name $ContainerName `
-        --gpus all `
-        --shm-size $ShmSize `
-        -p "${Port}:30000" `
-        -v "${hfCache}:/root/.cache/huggingface" `
-        $Image `
-        bash -lc "python3 -m pip install --no-cache-dir distro && python3 -m sglang.launch_server --model-path $Model --host 0.0.0.0 --port 30000 --enable-metrics --log-requests --log-requests-level 1 --log-requests-format json --radix-eviction-policy lru --mem-fraction-static $MemFractionStatic --attention-backend triton --sampling-backend pytorch --disable-cuda-graph"
+    $runArgs = @(
+        "run", "-d",
+        "--name", $ContainerName,
+        "--gpus", "all",
+        "--shm-size", $ShmSize,
+        "-p", "${Port}:30000",
+        "-v", "${hfCache}:/root/.cache/huggingface",
+        $Image,
+        "bash", "-lc",
+        "python3 -m pip install --no-cache-dir distro && python3 -m sglang.launch_server --model-path $Model --host 0.0.0.0 --port 30000 --enable-metrics --log-requests --log-requests-level 1 --log-requests-format json --radix-eviction-policy lru --mem-fraction-static $MemFractionStatic --attention-backend triton --sampling-backend pytorch --disable-cuda-graph"
+    )
+    Invoke-Docker @runArgs
 }
 
 Write-Host "Waiting for SGLang readiness: $modelsUrl"
