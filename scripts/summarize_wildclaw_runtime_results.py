@@ -17,6 +17,9 @@ CONDITION_ORDER = [
     "candidate_evidence_context",
     "v3_semantic_final_pass",
     "similar_context",
+    "real_semantic_order_original",
+    "real_semantic_order_repeat",
+    "real_semantic_order_permuted",
 ]
 
 
@@ -211,6 +214,7 @@ def render_markdown(csv_path: Path, rows: list[dict[str, str]]) -> str:
         "## Notes",
         "",
         "- Replay 2 measures ordinary SGLang prefix-cache reuse on identical prompts.",
+        "- Order-permutation manifests may encode the repeat as a separate `real_semantic_order_repeat` row with `REPEAT=1`.",
         "- The first real generation can include CUDA/Triton JIT warmup, so latency comparisons should be interpreted with warmup effects in mind.",
         "- `v3_semantic_final_pass` is expected to reduce prompt tokens when the semantic segmenter can isolate task-relevant sub-context.",
     ]

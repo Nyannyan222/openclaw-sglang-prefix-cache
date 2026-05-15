@@ -39,26 +39,20 @@ For each runtime row, collect:
 - `latency_s`
 - `cache_hit_rate`
 
-Runtime replay command:
+Runtime replay command for the full 12-row Search Retrieval set:
 
 ```bash
-python scripts/run_wildclaw_sglang_runtime_replay.py \
-  --manifest benchmark_results/wildclaw_phase2/wildclaw_phase2_sglang_runtime_manifest.jsonl \
-  --base-url http://127.0.0.1:8000/v1 \
-  --model <served-model-name> \
-  --repeat 2
+sbatch --account=MST114180 --export=ALL,LIMIT=0,REPEAT=2,MAX_TOKENS=64 scripts/slurm_run_wildclaw_runtime_replay.sh
 ```
 
-The first replay approximates cold/prefix-cache-miss behavior. The second
-identical replay measures ordinary SGLang prefix-cache reuse. This is the
-runtime metric baseline before implementing semantic sub-context KV reuse.
+The first replay approximates cold or low-reuse behavior. The second identical replay measures ordinary SGLang prefix-cache reuse.
 
 ## KV Reuse Design
 
 The first implementation target is an offline replay protocol:
 
 1. Segment each prompt into stable semantic sub-context blocks.
-2. Hash each block after canonical serialization.
+2. Hash each block after stable serialization.
 3. Replay requests in orders that share and reorder blocks.
 4. Compare normal prefix cache vs semantic sub-context block reuse.
 5. Report token reuse, TTFT, and latency differences.
