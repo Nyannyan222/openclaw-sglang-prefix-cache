@@ -2,7 +2,7 @@
 
 ## Goal
 
-This pilot replaces synthetic A/B/C contexts with real WildClawBench task
+This pilot replaces toy synthetic contexts with real WildClawBench task
 workspaces and evaluates whether LLM semantic sub-contexts can preserve task
 performance while reducing context cost.
 

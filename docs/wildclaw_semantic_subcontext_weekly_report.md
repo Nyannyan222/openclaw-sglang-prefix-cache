@@ -2,7 +2,7 @@
 
 ## Overview
 
-This week, I shifted the evaluation source from synthetic A/B/C contexts to
+This week, I shifted the evaluation source from earlier toy contexts to
 real WildClawBench task workspaces. The main goal was to build a more realistic
 pipeline for identifying semantic sub-contexts and evaluating whether any of
 them can be safely reused across tasks or prompts.

@@ -3,7 +3,7 @@
 ## Goal
 
 Use WildClawBench real task workspaces as the evaluation source and replace the
-previous synthetic A/B/C setup for the next stage of the sub-context work. The
+previous toy-context setup for the next stage of the sub-context work. The
 first phase does not run the complete WildClawBench benchmark. It builds a
 small pilot dataset from real task prompts and workspace files, then compares
 three context construction strategies:
